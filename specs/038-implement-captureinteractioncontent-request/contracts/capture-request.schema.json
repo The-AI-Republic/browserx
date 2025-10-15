@@ -1,0 +1,38 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://codex-chrome.ai/schemas/capture-request.json",
+  "title": "CaptureRequest",
+  "description": "Input parameters for configuring page interaction content capture",
+  "type": "object",
+  "properties": {
+    "baseUrl": {
+      "type": "string",
+      "description": "Base URL for relative path resolution",
+      "format": "uri"
+    },
+    "maxControls": {
+      "type": "integer",
+      "description": "Max interactive elements to capture",
+      "minimum": 1,
+      "default": 400
+    },
+    "maxHeadings": {
+      "type": "integer",
+      "description": "Max headings to capture",
+      "minimum": 1,
+      "default": 30
+    },
+    "includeValues": {
+      "type": "boolean",
+      "description": "Include form values (default: false, privacy risk)",
+      "default": false
+    },
+    "maxIframeDepth": {
+      "type": "integer",
+      "description": "Max iframe nesting depth",
+      "minimum": 0,
+      "default": 1
+    }
+  },
+  "additionalProperties": false
+}

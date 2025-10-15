@@ -1,0 +1,173 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://codex-chrome.ai/schemas/page-model.json",
+  "title": "PageModel",
+  "description": "Compact interaction model of a web page for LLM consumption",
+  "type": "object",
+  "required": ["title", "headings", "regions", "controls", "aimap"],
+  "properties": {
+    "title": {
+      "type": "string",
+      "description": "Page document title",
+      "minLength": 1,
+      "maxLength": 500
+    },
+    "url": {
+      "type": "string",
+      "description": "Page URL (optional)",
+      "format": "uri"
+    },
+    "headings": {
+      "type": "array",
+      "description": "Extracted headings (h1, h2, h3)",
+      "items": {
+        "type": "string",
+        "minLength": 1,
+        "maxLength": 200
+      },
+      "maxItems": 30,
+      "uniqueItems": false
+    },
+    "regions": {
+      "type": "array",
+      "description": "Unique landmark region types present on page",
+      "items": {
+        "type": "string",
+        "enum": ["main", "navigation", "header", "footer", "aside", "dialog", "search", "nav", "region"]
+      },
+      "uniqueItems": true
+    },
+    "controls": {
+      "type": "array",
+      "description": "Interactive elements captured on page",
+      "items": {
+        "$ref": "#/definitions/InteractiveControl"
+      },
+      "maxItems": 400
+    },
+    "aimap": {
+      "type": "object",
+      "description": "Mapping of stable IDs to CSS selectors",
+      "additionalProperties": {
+        "type": "string",
+        "minLength": 1
+      }
+    }
+  },
+  "definitions": {
+    "InteractiveControl": {
+      "type": "object",
+      "required": ["id", "role", "name", "states", "selector", "visible", "inViewport"],
+      "properties": {
+        "id": {
+          "type": "string",
+          "description": "Stable unique ID for LLM reference",
+          "pattern": "^[a-z]{2}_[0-9]+$"
+        },
+        "role": {
+          "type": "string",
+          "description": "ARIA role or inferred semantic role",
+          "enum": [
+            "button", "link", "textbox", "checkbox", "radio", "combobox",
+            "menuitem", "tab", "switch", "slider", "main", "navigation",
+            "header", "footer", "aside", "dialog", "search", "region",
+            "listitem", "option", "treeitem", "gridcell", "row", "columnheader"
+          ]
+        },
+        "name": {
+          "type": "string",
+          "description": "Computed accessible name (WCAG)",
+          "maxLength": 160
+        },
+        "states": {
+          "$ref": "#/definitions/ControlStates"
+        },
+        "selector": {
+          "type": "string",
+          "description": "CSS selector for element location",
+          "minLength": 1
+        },
+        "region": {
+          "type": "string",
+          "description": "Containing landmark region type",
+          "enum": ["main", "navigation", "header", "footer", "aside", "dialog", "search", "nav"]
+        },
+        "boundingBox": {
+          "$ref": "#/definitions/BoundingBox"
+        },
+        "visible": {
+          "type": "boolean",
+          "description": "Element visibility (computed styles + bbox)"
+        },
+        "inViewport": {
+          "type": "boolean",
+          "description": "Element within current viewport"
+        }
+      }
+    },
+    "ControlStates": {
+      "type": "object",
+      "description": "Element-specific state properties",
+      "properties": {
+        "disabled": {
+          "type": "boolean",
+          "description": "Element is disabled (not actionable)"
+        },
+        "checked": {
+          "oneOf": [
+            { "type": "boolean" },
+            { "type": "string", "enum": ["mixed"] }
+          ],
+          "description": "Checked state (checkbox/radio)"
+        },
+        "expanded": {
+          "type": "boolean",
+          "description": "Expansion state (accordions, menus)"
+        },
+        "required": {
+          "type": "boolean",
+          "description": "Field is required"
+        },
+        "placeholder": {
+          "type": "string",
+          "description": "Placeholder text",
+          "maxLength": 80
+        },
+        "value_len": {
+          "type": "integer",
+          "description": "Value length (privacy: not actual value)",
+          "minimum": 0
+        },
+        "href": {
+          "type": "string",
+          "description": "Link destination"
+        }
+      },
+      "additionalProperties": true
+    },
+    "BoundingBox": {
+      "type": "object",
+      "required": ["x", "y", "width", "height"],
+      "properties": {
+        "x": {
+          "type": "number",
+          "description": "Left position (pixels from viewport left)"
+        },
+        "y": {
+          "type": "number",
+          "description": "Top position (pixels from viewport top)"
+        },
+        "width": {
+          "type": "number",
+          "description": "Element width (pixels)",
+          "exclusiveMinimum": 0
+        },
+        "height": {
+          "type": "number",
+          "description": "Element height (pixels)",
+          "exclusiveMinimum": 0
+        }
+      }
+    }
+  }
+}

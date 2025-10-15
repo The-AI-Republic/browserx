@@ -13,6 +13,7 @@ import { StorageQuotaManager } from '../storage/StorageQuotaManager';
 import { RolloutRecorder } from '../storage/rollout';
 import { registerTools } from '../tools';
 import { AgentConfig } from '../config/AgentConfig';
+import { setupPageActionHandlers } from './message-handlers';
 
 // Global instances
 let agent: CodexAgent | null = null;
@@ -212,13 +213,16 @@ function setupMessageHandlers(): void {
   router.on(MessageType.TAB_COMMAND, async (message) => {
     const { command, args } = message.payload;
     const tabId = message.tabId;
-    
+
     if (!tabId) {
       throw new Error('Tab ID required for tab command');
     }
-    
+
     return executeTabCommand(tabId, command, args);
   });
+
+  // Setup page action handlers
+  setupPageActionHandlers(router);
 }
 
 /**

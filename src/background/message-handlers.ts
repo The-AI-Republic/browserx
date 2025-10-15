@@ -103,7 +103,7 @@ export async function injectPageActionScript(tabId: number): Promise<void> {
     // Inject content script
     await chrome.scripting.executeScript({
       target: { tabId, allFrames: true },
-      files: ['content-scripts/page-actions.js']
+      files: ['content/page-actions.js']
     });
 
     console.log(`[PageActionHandlers] Page action script injected into tab ${tabId}`);

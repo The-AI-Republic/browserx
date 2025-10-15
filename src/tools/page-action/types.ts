@@ -82,6 +82,21 @@ export const ErrorCodeSchema = z.enum([
   'UNKNOWN_ERROR'
 ]);
 
+/**
+ * Page action error codes for standardized error handling
+ * Maps to ToolError interface used by ToolRegistry
+ */
+export enum PageActionErrorCode {
+  ELEMENT_NOT_FOUND = 'ELEMENT_NOT_FOUND',
+  ELEMENT_STALE = 'ELEMENT_STALE',
+  ELEMENT_NOT_INTERACTABLE = 'ELEMENT_NOT_INTERACTABLE',
+  ACTION_TIMEOUT = 'ACTION_TIMEOUT',
+  INVALID_ACTION_TYPE = 'INVALID_ACTION_TYPE',
+  SELECTOR_MAP_REFRESH_FAILED = 'SELECTOR_MAP_REFRESH_FAILED',
+  CONTENT_SCRIPT_ERROR = 'CONTENT_SCRIPT_ERROR',
+  UNKNOWN_ERROR = 'UNKNOWN_ERROR'
+}
+
 // Retry config schema
 export const RetryConfigSchema = z.object({
   maxAttempts: z.number().min(1).max(10).default(3),

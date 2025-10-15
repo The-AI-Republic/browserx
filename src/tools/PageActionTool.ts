@@ -11,7 +11,7 @@ import type {
   ActionExecutionResult,
   DOMSelectorMap
 } from '../types/page-actions';
-import { ActionCommandSchema, PageActionToolRequestSchema } from './page-action/types';
+import { ActionCommandSchema, PageActionToolRequestSchema, PageActionErrorCode } from './page-action/types';
 import { ActionHistory } from './page-action/ActionHistory';
 import { RetryStrategy } from './page-action/RetryStrategy';
 
@@ -67,7 +67,22 @@ export class PageActionTool extends BaseTool {
         }
       },
       {
-        required: ['action']
+        required: ['action'],
+        category: 'action',
+        version: '1.0.0',
+        metadata: {
+          capabilities: [
+            'page_click',
+            'page_input',
+            'page_scroll',
+            'element_verify',
+            'iframe_support',
+            'shadow_dom_support',
+            'stale_element_recovery',
+            'action_history'
+          ],
+          permissions: ['activeTab', 'scripting', 'tabs']
+        }
       }
     );
 
@@ -84,10 +99,10 @@ export class PageActionTool extends BaseTool {
   ): Promise<any> {
     this.log('info', 'Executing page action', request);
 
-    // Validate request with Zod schema
-    const validationResult = PageActionToolRequestSchema.safeParse(request);
-    if (!validationResult.success) {
-      throw new Error(`Invalid page action request: ${validationResult.error.message}`);
+    // Validate request using private method (pattern matches DOMTool)
+    const validationError = this.validateRequest(request);
+    if (validationError) {
+      throw new Error(validationError);
     }
 
     const typedRequest = request as PageActionToolRequest;
@@ -160,9 +175,14 @@ export class PageActionTool extends BaseTool {
 
       // Check if action succeeded
       if (!response.success) {
+        const errorCode = this.mapErrorToCode(response.error || 'Action execution failed');
         return {
           success: false,
-          error: response.error || 'Action execution failed',
+          error: this.createError(
+            errorCode,
+            response.error || 'Action execution failed',
+            { actionType: action.type, tabId }
+          ),
           metadata: {
             duration,
             toolName: 'page_action',
@@ -191,9 +211,18 @@ export class PageActionTool extends BaseTool {
 
       this.log('error', 'Action execution failed', error);
 
+      const errorCode = this.mapErrorToCode(error);
       return {
         success: false,
-        error: error instanceof Error ? error.message : String(error),
+        error: this.createError(
+          errorCode,
+          error instanceof Error ? error.message : String(error),
+          {
+            actionType: action.type,
+            tabId,
+            stack: error instanceof Error ? error.stack : undefined
+          }
+        ),
         metadata: {
           duration,
           toolName: 'page_action',
@@ -241,6 +270,53 @@ export class PageActionTool extends BaseTool {
     } catch (error) {
       this.log('warn', 'Failed to notify side panel', error);
     }
+  }
+
+  /**
+   * Validate request parameters using Zod schema
+   * Pattern matches DOMTool.validateRequest (DOMTool.ts:455-479)
+   * @private
+   */
+  private validateRequest(parameters: unknown): string | null {
+    const validationResult = PageActionToolRequestSchema.safeParse(parameters);
+    if (!validationResult.success) {
+      const errors = validationResult.error.errors.map(e => `${e.path.join('.')}: ${e.message}`);
+      return `Validation failed: ${errors.join(', ')}`;
+    }
+    return null;
+  }
+
+  /**
+   * Map internal errors to PageActionErrorCode
+   * Pattern matches DOMTool.mapServiceErrorCode (DOMTool.ts:578-589)
+   * @private
+   */
+  private mapErrorToCode(error: any): PageActionErrorCode {
+    const errorMessage = error?.message || String(error);
+
+    if (errorMessage.includes('not found') || errorMessage.includes('no element')) {
+      return PageActionErrorCode.ELEMENT_NOT_FOUND;
+    }
+    if (errorMessage.includes('stale')) {
+      return PageActionErrorCode.ELEMENT_STALE;
+    }
+    if (errorMessage.includes('not interactable') || errorMessage.includes('obscured')) {
+      return PageActionErrorCode.ELEMENT_NOT_INTERACTABLE;
+    }
+    if (errorMessage.includes('timeout') || errorMessage.includes('timed out')) {
+      return PageActionErrorCode.ACTION_TIMEOUT;
+    }
+    if (errorMessage.includes('invalid') && errorMessage.includes('action')) {
+      return PageActionErrorCode.INVALID_ACTION_TYPE;
+    }
+    if (errorMessage.includes('selector map')) {
+      return PageActionErrorCode.SELECTOR_MAP_REFRESH_FAILED;
+    }
+    if (errorMessage.includes('content script') || errorMessage.includes('Could not establish connection')) {
+      return PageActionErrorCode.CONTENT_SCRIPT_ERROR;
+    }
+
+    return PageActionErrorCode.UNKNOWN_ERROR;
   }
 
   /**

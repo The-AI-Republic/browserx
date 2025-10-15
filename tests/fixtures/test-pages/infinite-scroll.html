@@ -1,0 +1,197 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Infinite Scroll Test Page</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            margin: 0;
+            padding: 20px;
+        }
+        .header {
+            position: fixed;
+            top: 0;
+            left: 0;
+            right: 0;
+            background: #333;
+            color: white;
+            padding: 10px 20px;
+            z-index: 1000;
+        }
+        .content {
+            margin-top: 60px;
+        }
+        .item {
+            padding: 20px;
+            margin: 10px 0;
+            border: 1px solid #ddd;
+            background: #f9f9f9;
+            border-radius: 4px;
+        }
+        .footer {
+            margin-top: 50px;
+            padding: 20px;
+            background: #eee;
+            text-align: center;
+        }
+        #loading {
+            text-align: center;
+            padding: 20px;
+            display: none;
+        }
+        .loading-spinner {
+            display: inline-block;
+            width: 40px;
+            height: 40px;
+            border: 4px solid #f3f3f3;
+            border-top: 4px solid #333;
+            border-radius: 50%;
+            animation: spin 1s linear infinite;
+        }
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+        .scroll-target {
+            background: #ffeb3b;
+            font-weight: bold;
+        }
+    </style>
+</head>
+<body>
+    <div class="header">
+        <h1>Infinite Scroll Test Page</h1>
+        <p>Items loaded: <span id="item-count">20</span></p>
+    </div>
+
+    <div class="content" id="content">
+        <!-- Initial items will be added by JavaScript -->
+    </div>
+
+    <div id="loading">
+        <div class="loading-spinner"></div>
+        <p>Loading more items...</p>
+    </div>
+
+    <div class="footer" id="footer">
+        <h2>Footer</h2>
+        <p>You've reached the end of the page!</p>
+        <p>Scroll up to trigger more content loading.</p>
+    </div>
+
+    <script>
+        let itemCount = 0;
+        let isLoading = false;
+        const maxItems = 100;
+
+        // Initialize with 20 items
+        function init() {
+            for (let i = 0; i < 20; i++) {
+                addItem();
+            }
+        }
+
+        // Add a single item
+        function addItem() {
+            itemCount++;
+            const content = document.getElementById('content');
+            const item = document.createElement('div');
+            item.className = 'item';
+            item.id = `item-${itemCount}`;
+
+            // Mark every 10th item as a scroll target
+            if (itemCount % 10 === 0) {
+                item.classList.add('scroll-target');
+            }
+
+            item.innerHTML = `
+                <h3>Item ${itemCount}</h3>
+                <p>This is item number ${itemCount}. Lorem ipsum dolor sit amet, consectetur adipiscing elit.</p>
+                <small>Created at ${new Date().toLocaleTimeString()}</small>
+            `;
+
+            content.appendChild(item);
+            updateItemCount();
+        }
+
+        // Load more items
+        function loadMoreItems() {
+            if (isLoading || itemCount >= maxItems) {
+                return;
+            }
+
+            isLoading = true;
+            const loading = document.getElementById('loading');
+            loading.style.display = 'block';
+
+            // Simulate network delay
+            setTimeout(() => {
+                // Add 10 more items
+                for (let i = 0; i < 10; i++) {
+                    if (itemCount < maxItems) {
+                        addItem();
+                    }
+                }
+
+                loading.style.display = 'none';
+                isLoading = false;
+
+                console.log('Loaded more items. Total:', itemCount);
+            }, 1000);
+        }
+
+        // Update item count display
+        function updateItemCount() {
+            document.getElementById('item-count').textContent = itemCount;
+        }
+
+        // Set up scroll event listener
+        window.addEventListener('scroll', () => {
+            const scrollTop = window.pageYOffset || document.documentElement.scrollTop;
+            const windowHeight = window.innerHeight;
+            const documentHeight = document.documentElement.scrollHeight;
+
+            // Load more when user scrolls near bottom (200px threshold)
+            if (scrollTop + windowHeight >= documentHeight - 200) {
+                loadMoreItems();
+            }
+        });
+
+        // Set up intersection observer for more efficient lazy loading
+        const observerOptions = {
+            root: null,
+            rootMargin: '200px',
+            threshold: 0
+        };
+
+        const observer = new IntersectionObserver((entries) => {
+            entries.forEach(entry => {
+                if (entry.isIntersecting) {
+                    loadMoreItems();
+                }
+            });
+        }, observerOptions);
+
+        // Observe the footer
+        observer.observe(document.getElementById('footer'));
+
+        // Initialize page
+        init();
+
+        // Log scroll events for testing
+        let scrollTimeout;
+        window.addEventListener('scroll', () => {
+            clearTimeout(scrollTimeout);
+            scrollTimeout = setTimeout(() => {
+                console.log('Scroll position:', {
+                    x: window.scrollX,
+                    y: window.scrollY,
+                    percentComplete: Math.round((window.scrollY / (document.documentElement.scrollHeight - window.innerHeight)) * 100)
+                });
+            }, 100);
+        });
+    </script>
+</body>
+</html>

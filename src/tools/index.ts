@@ -11,6 +11,7 @@ import { DOMTool } from './DOMTool';
 import { NavigationTool } from './NavigationTool';
 import { StorageTool } from './StorageTool';
 import { TabTool } from './TabTool';
+import { PageActionTool } from './PageActionTool';
 import type { IToolsConfig } from '../config/types';
 
 // Re-export all tools
@@ -25,6 +26,7 @@ export { DOMTool } from './DOMTool';
 export { NavigationTool } from './NavigationTool';
 export { StorageTool } from './StorageTool';
 export { TabTool } from './TabTool';
+export { PageActionTool } from './PageActionTool';
 
 /**
  * Register browser automation tools based on configuration
@@ -58,6 +60,8 @@ export async function registerTools(registry: ToolRegistry, toolsConfig: IToolsC
           return toolsConfig.storage_tool === true;
         case 'tab_tool':
           return toolsConfig.tab_tool === true;
+        case 'page_action':
+          return true; // Always enabled - core functionality
         default:
           return false;
       }
@@ -139,6 +143,12 @@ export async function registerTools(registry: ToolRegistry, toolsConfig: IToolsC
       await registerTool('tab_tool', tabTool);
     } else {
       console.log('TabTool disabled in configuration, skipping...');
+    }
+
+    // Page Action Tool (always enabled - core functionality)
+    if (isToolEnabled('page_action')) {
+      const pageActionTool = new PageActionTool();
+      await registerTool('page_action', pageActionTool);
     }
 
     console.log('Advanced browser tools registration completed');

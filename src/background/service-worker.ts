@@ -13,7 +13,6 @@ import { StorageQuotaManager } from '../storage/StorageQuotaManager';
 import { RolloutRecorder } from '../storage/rollout';
 import { registerTools } from '../tools';
 import { AgentConfig } from '../config/AgentConfig';
-import { setupPageActionHandlers } from './message-handlers';
 
 // Global instances
 let agent: CodexAgent | null = null;
@@ -221,8 +220,10 @@ function setupMessageHandlers(): void {
     return executeTabCommand(tabId, command, args);
   });
 
-  // Setup page action handlers
-  setupPageActionHandlers(router);
+  // NOTE: PageAction execution logic removed from here.
+  // All PageAction tool execution now flows through:
+  // TurnManager.executeBrowserTool() → ToolRegistry.execute() → PageActionTool.executeImpl()
+  // See src/core/TurnManager.ts:774-822 for the execution entry point.
 }
 
 /**

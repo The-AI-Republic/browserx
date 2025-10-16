@@ -130,6 +130,7 @@ export interface IToolsConfig {
   navigation_tool?: boolean;
   network_intercept_tool?: boolean;
   data_extraction_tool?: boolean;
+  page_action_tool?: boolean;
 
   // Agent execution tool toggles
   execCommand?: boolean;

@@ -63,23 +63,14 @@ jobs:
           # Add comment before merging
           gh pr comment $PRIVATE_PR_NUMBER \
             --repo The-AI-Republic/ai-republic-agents \
-            --body "🔄 **Auto-merging**: OSS PR #${{ github.event.pull_request.number }} was merged by @${{ github.event.pull_request.merged_by.login }}.
-
-          Syncing merge to private repo...
-
-          🤖 *Automated by OSS Sync Bot*"
+            --body "🔄 **Auto-merging**: OSS PR #${{ github.event.pull_request.number }} was merged by @${{ github.event.pull_request.merged_by.login }}. Syncing merge to private repo... 🤖 *Automated by OSS Sync Bot*"
 
           # Merge the private PR
           gh pr merge $PRIVATE_PR_NUMBER \
             --repo The-AI-Republic/ai-republic-agents \
             --squash \
             --subject "[OSS #${{ github.event.pull_request.number }}] ${{ github.event.pull_request.title }}" \
-            --body "Auto-merged from OSS PR: ${{ github.event.pull_request.html_url }}
-
-Merged by: @${{ github.event.pull_request.merged_by.login }}
-Merged at: ${{ github.event.pull_request.merged_at }}
-
-🤖 Automated by OSS Sync Bot"
+            --body "Auto-merged from OSS PR: ${{ github.event.pull_request.html_url }} - Merged by: @${{ github.event.pull_request.merged_by.login }} - Merged at: ${{ github.event.pull_request.merged_at }} - 🤖 Automated by OSS Sync Bot"
 
           echo "✅ Private PR merged successfully!"
 

@@ -1,0 +1,305 @@
+name: OSS PR Approved - Create Private PR
+
+# Triggers when a PR is approved in the OSS repo
+# Creates a corresponding PR in the private repo for review
+
+on:
+  pull_request_review:
+    types: [submitted]
+
+jobs:
+  create-private-pr:
+    # Only run when review is an approval
+    if: github.event.review.state == 'approved'
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Check if already processed
+        id: check
+        env:
+          GH_TOKEN: ${{ secrets.PRIVATE_REPO_TOKEN }}
+        run: |
+          # Check if we already created a private PR for this OSS PR
+          OSS_PR_NUMBER="${{ github.event.pull_request.number }}"
+
+          # Search for existing PR in private repo with label
+          EXISTING_PR=$(gh pr list \
+            --repo The-AI-Republic/ai-republic-agents \
+            --search "oss-pr-$OSS_PR_NUMBER in:title" \
+            --json number \
+            --jq '.[0].number' 2>/dev/null || echo "")
+
+          if [ -n "$EXISTING_PR" ]; then
+            echo "already_exists=true" >> $GITHUB_OUTPUT
+            echo "private_pr_number=$EXISTING_PR" >> $GITHUB_OUTPUT
+            echo "✅ Private PR already exists: #$EXISTING_PR"
+          else
+            echo "already_exists=false" >> $GITHUB_OUTPUT
+            echo "📝 No existing private PR found"
+          fi
+
+      - name: Comment if already exists
+        if: steps.check.outputs.already_exists == 'true'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          gh pr comment ${{ github.event.pull_request.number }} \
+            --repo ${{ github.repository }} \
+            --body "✅ This PR is already synced to private repo as PR #${{ steps.check.outputs.private_pr_number }}"
+
+      - name: Checkout OSS repo
+        if: steps.check.outputs.already_exists == 'false'
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          ref: ${{ github.event.pull_request.head.ref }}
+
+      - name: Setup Git
+        if: steps.check.outputs.already_exists == 'false'
+        run: |
+          git config --global user.name "OSS Sync Bot"
+          git config --global user.email "oss-sync-bot@airepublic.com"
+
+      - name: Generate patches
+        if: steps.check.outputs.already_exists == 'false'
+        id: patches
+        run: |
+          mkdir -p /tmp/patches
+
+          BASE_SHA="${{ github.event.pull_request.base.sha }}"
+          HEAD_SHA="${{ github.event.pull_request.head.sha }}"
+
+          echo "Generating patches from $BASE_SHA to $HEAD_SHA"
+          git format-patch $BASE_SHA..$HEAD_SHA -o /tmp/patches/
+
+          PATCH_COUNT=$(ls /tmp/patches/*.patch 2>/dev/null | wc -l)
+          echo "count=$PATCH_COUNT" >> $GITHUB_OUTPUT
+
+          if [ $PATCH_COUNT -eq 0 ]; then
+            echo "❌ No patches generated!"
+            exit 1
+          fi
+
+          echo "✅ Generated $PATCH_COUNT patch(es)"
+
+      - name: Security Check - Scan for sensitive patterns
+        if: steps.check.outputs.already_exists == 'false'
+        run: |
+          echo "🔍 Scanning patches for sensitive data..."
+
+          SENSITIVE_PATTERNS=(
+            "password"
+            "secret"
+            "api_key"
+            "apikey"
+            "token"
+            "private_key"
+            "privatekey"
+            "ssh-rsa"
+            "BEGIN.*PRIVATE KEY"
+            "aws_access_key"
+            "sk-[a-zA-Z0-9]{48}"
+          )
+
+          FOUND_SENSITIVE=false
+          for pattern in "${SENSITIVE_PATTERNS[@]}"; do
+            if grep -riE "$pattern" /tmp/patches/ 2>/dev/null; then
+              echo "❌ Found potential sensitive data: $pattern"
+              FOUND_SENSITIVE=true
+            fi
+          done
+
+          if [ "$FOUND_SENSITIVE" = true ]; then
+            echo "❌ Security check failed!"
+            exit 1
+          fi
+
+          echo "✅ No sensitive patterns detected"
+
+      - name: Security Check - Validate file paths
+        if: steps.check.outputs.already_exists == 'false'
+        run: |
+          echo "🔍 Validating modified file paths..."
+
+          MODIFIED_FILES=$(grep -h "^diff --git a/" /tmp/patches/*.patch | sed 's/diff --git a\/\([^ ]*\).*/\1/' | sort -u)
+
+          ALLOWED_PATTERNS=(
+            "^src/"
+            "^tests/"
+            "^docs/"
+            "^package\.json$"
+            "^package-lock\.json$"
+            "^tsconfig\.json$"
+            "^.*\.md$"
+            "^\.eslintrc"
+            "^\.prettierrc"
+            "^vitest.*\.config"
+            "^vite\.config"
+          )
+
+          while IFS= read -r file; do
+            ALLOWED=false
+            for pattern in "${ALLOWED_PATTERNS[@]}"; do
+              if echo "$file" | grep -qE "$pattern"; then
+                ALLOWED=true
+                break
+              fi
+            done
+
+            if [ "$ALLOWED" = false ]; then
+              echo "❌ File not in allowed paths: $file"
+              exit 1
+            fi
+          done <<< "$MODIFIED_FILES"
+
+          echo "✅ All modified files are in allowed paths"
+
+      - name: Security Check - Size limits
+        if: steps.check.outputs.already_exists == 'false'
+        run: |
+          TOTAL_SIZE=$(du -sk /tmp/patches | cut -f1)
+          MAX_SIZE=5000
+          FILES_CHANGED=$(grep -h "^diff --git" /tmp/patches/*.patch | wc -l)
+          MAX_FILES=50
+
+          if [ $TOTAL_SIZE -gt $MAX_SIZE ] || [ $FILES_CHANGED -gt $MAX_FILES ]; then
+            echo "❌ Patches exceed limits!"
+            exit 1
+          fi
+
+          echo "✅ Patch size within limits"
+
+      - name: Checkout private repo
+        if: steps.check.outputs.already_exists == 'false'
+        uses: actions/checkout@v4
+        with:
+          repository: The-AI-Republic/ai-republic-agents
+          token: ${{ secrets.PRIVATE_REPO_TOKEN }}
+          path: private-repo
+          fetch-depth: 0
+
+      - name: Apply patches to private repo
+        if: steps.check.outputs.already_exists == 'false'
+        working-directory: private-repo/in_browser_agent
+        run: |
+          BRANCH_NAME="oss-pr-${{ github.event.pull_request.number }}"
+          git checkout -b "$BRANCH_NAME"
+
+          if git am /tmp/patches/*.patch; then
+            echo "✅ Patches applied successfully"
+          else
+            echo "❌ Failed to apply patches"
+            git am --abort
+            exit 1
+          fi
+
+          git push origin "$BRANCH_NAME"
+
+      - name: Create PR in private repo
+        if: steps.check.outputs.already_exists == 'false'
+        id: create_pr
+        env:
+          GH_TOKEN: ${{ secrets.PRIVATE_REPO_TOKEN }}
+        run: |
+          PR_BODY=$(cat <<EOF
+          ## 🔄 Auto-Sync from OSS PR
+
+          **OSS PR**: ${{ github.event.pull_request.html_url }}
+          **OSS PR Number**: #${{ github.event.pull_request.number }}
+          **Author**: @${{ github.event.pull_request.user.login }}
+          **Status**: ✅ Approved in OSS repo
+
+          ### Original Description
+
+          ${{ github.event.pull_request.body }}
+
+          ---
+
+          ### 🔗 PR Linking
+
+          This PR is **linked** to OSS PR #${{ github.event.pull_request.number }}.
+
+          - ✅ When you merge this PR, the OSS PR will auto-merge
+          - ✅ When the OSS PR merges, this PR will auto-merge
+          - ⚠️ If you close this PR, the OSS PR will be commented
+
+          ### Security Checks ✅
+
+          - ✅ No sensitive data detected
+          - ✅ File paths validated
+          - ✅ Patch size within limits
+
+          ### Review Checklist
+
+          - [ ] Code quality meets standards
+          - [ ] Tests pass
+          - [ ] No breaking changes
+
+          ---
+
+          <!-- oss-pr-link: ${{ github.event.pull_request.number }} -->
+          <!-- private-pr-link: PLACEHOLDER -->
+
+          🤖 *Auto-created by OSS Sync Bot*
+          EOF
+          )
+
+          PRIVATE_PR_URL=$(gh pr create \
+            --repo The-AI-Republic/ai-republic-agents \
+            --title "[OSS #${{ github.event.pull_request.number }}] ${{ github.event.pull_request.title }}" \
+            --body "$PR_BODY" \
+            --base main \
+            --head "oss-pr-${{ github.event.pull_request.number }}" \
+            --label "oss-sync" \
+            --label "needs-review")
+
+          PRIVATE_PR_NUMBER=$(echo "$PRIVATE_PR_URL" | grep -oP '\d+$')
+          echo "private_pr_number=$PRIVATE_PR_NUMBER" >> $GITHUB_OUTPUT
+          echo "✅ Created private PR #$PRIVATE_PR_NUMBER"
+
+      - name: Update private PR with link
+        if: steps.check.outputs.already_exists == 'false'
+        env:
+          GH_TOKEN: ${{ secrets.PRIVATE_REPO_TOKEN }}
+        run: |
+          # Update the PR body to include the private PR number
+          PRIVATE_PR_NUMBER="${{ steps.create_pr.outputs.private_pr_number }}"
+
+          gh pr view $PRIVATE_PR_NUMBER \
+            --repo The-AI-Republic/ai-republic-agents \
+            --json body --jq '.body' | \
+            sed "s/<!-- private-pr-link: PLACEHOLDER -->/<!-- private-pr-link: $PRIVATE_PR_NUMBER -->/" | \
+            gh pr edit $PRIVATE_PR_NUMBER \
+              --repo The-AI-Republic/ai-republic-agents \
+              --body-file -
+
+      - name: Comment on OSS PR
+        if: steps.check.outputs.already_exists == 'false'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          PRIVATE_PR_NUMBER="${{ steps.create_pr.outputs.private_pr_number }}"
+
+          gh pr comment ${{ github.event.pull_request.number }} \
+            --repo ${{ github.repository }} \
+            --body "✅ **Private PR created!**
+
+          This PR has been synced to the private repository as [PR #$PRIVATE_PR_NUMBER](https://github.com/The-AI-Republic/ai-republic-agents/pull/$PRIVATE_PR_NUMBER).
+
+          🔗 **Linked PRs**: When either PR is merged, the other will auto-merge.
+
+          <!-- oss-pr-link: ${{ github.event.pull_request.number }} -->
+          <!-- private-pr-link: $PRIVATE_PR_NUMBER -->"
+
+      - name: Notify on failure
+        if: failure() && steps.check.outputs.already_exists == 'false'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          gh pr comment ${{ github.event.pull_request.number }} \
+            --repo ${{ github.repository }} \
+            --body "❌ **Failed to create private PR**
+
+          Security checks failed or patches could not be applied. A maintainer will review this PR manually.
+
+          Check the [Actions log](${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}) for details."

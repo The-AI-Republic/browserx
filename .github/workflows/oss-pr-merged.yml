@@ -1,0 +1,98 @@
+name: OSS PR Merged - Sync to Private
+
+# When an OSS PR is merged, auto-merge the linked private PR
+
+on:
+  pull_request:
+    types: [closed]
+
+jobs:
+  sync-merge:
+    if: github.event.pull_request.merged == true
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Extract linked private PR number
+        id: extract
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          OSS_PR_NUMBER="${{ github.event.pull_request.number }}"
+
+          # Get PR body and comments to find private PR link
+          PRIVATE_PR_NUMBER=$(gh pr view $OSS_PR_NUMBER \
+            --repo ${{ github.repository }} \
+            --json body,comments \
+            --jq '[.body, .comments[].body] | join("\n")' | \
+            grep -oP '<!-- private-pr-link: \K\d+' | head -1 || echo "")
+
+          if [ -z "$PRIVATE_PR_NUMBER" ]; then
+            echo "⚠️  No linked private PR found"
+            echo "linked=false" >> $GITHUB_OUTPUT
+          else
+            echo "✅ Found linked private PR #$PRIVATE_PR_NUMBER"
+            echo "linked=true" >> $GITHUB_OUTPUT
+            echo "private_pr_number=$PRIVATE_PR_NUMBER" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Check private PR status
+        if: steps.extract.outputs.linked == 'true'
+        id: check_status
+        env:
+          GH_TOKEN: ${{ secrets.PRIVATE_REPO_TOKEN }}
+        run: |
+          PRIVATE_PR_NUMBER="${{ steps.extract.outputs.private_pr_number }}"
+
+          PR_STATE=$(gh pr view $PRIVATE_PR_NUMBER \
+            --repo The-AI-Republic/ai-republic-agents \
+            --json state \
+            --jq '.state')
+
+          echo "state=$PR_STATE" >> $GITHUB_OUTPUT
+          echo "Private PR state: $PR_STATE"
+
+      - name: Auto-merge private PR
+        if: steps.extract.outputs.linked == 'true' && steps.check_status.outputs.state == 'OPEN'
+        env:
+          GH_TOKEN: ${{ secrets.PRIVATE_REPO_TOKEN }}
+        run: |
+          PRIVATE_PR_NUMBER="${{ steps.extract.outputs.private_pr_number }}"
+
+          echo "🔄 Auto-merging private PR #$PRIVATE_PR_NUMBER..."
+
+          # Add comment before merging
+          gh pr comment $PRIVATE_PR_NUMBER \
+            --repo The-AI-Republic/ai-republic-agents \
+            --body "🔄 **Auto-merging**: OSS PR #${{ github.event.pull_request.number }} was merged by @${{ github.event.pull_request.merged_by.login }}.
+
+          Syncing merge to private repo...
+
+          🤖 *Automated by OSS Sync Bot*"
+
+          # Merge the private PR
+          gh pr merge $PRIVATE_PR_NUMBER \
+            --repo The-AI-Republic/ai-republic-agents \
+            --squash \
+            --subject "[OSS #${{ github.event.pull_request.number }}] ${{ github.event.pull_request.title }}" \
+            --body "Auto-merged from OSS PR: ${{ github.event.pull_request.html_url }}
+
+Merged by: @${{ github.event.pull_request.merged_by.login }}
+Merged at: ${{ github.event.pull_request.merged_at }}
+
+🤖 Automated by OSS Sync Bot"
+
+          echo "✅ Private PR merged successfully!"
+
+      - name: Comment on closed private PR
+        if: steps.extract.outputs.linked == 'true' && steps.check_status.outputs.state != 'OPEN'
+        env:
+          GH_TOKEN: ${{ secrets.PRIVATE_REPO_TOKEN }}
+        run: |
+          echo "ℹ️  Private PR already closed/merged"
+
+      - name: Handle unlinked PR
+        if: steps.extract.outputs.linked == 'false'
+        run: |
+          echo "⚠️  This OSS PR was not linked to a private PR."
+          echo "It may have been merged before the auto-sync system was enabled."
+          echo "Consider manually syncing this change if needed."

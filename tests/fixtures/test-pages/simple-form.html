@@ -1,0 +1,174 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Simple Form Test Page</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            padding: 20px;
+            max-width: 800px;
+            margin: 0 auto;
+        }
+        form {
+            margin: 20px 0;
+            padding: 20px;
+            border: 1px solid #ddd;
+            background: #f9f9f9;
+        }
+        .form-group {
+            margin-bottom: 15px;
+        }
+        label {
+            display: block;
+            margin-bottom: 5px;
+            font-weight: bold;
+        }
+        input, textarea, select {
+            width: 100%;
+            padding: 8px;
+            font-size: 14px;
+            border: 1px solid #ccc;
+            border-radius: 4px;
+        }
+        textarea {
+            min-height: 100px;
+            resize: vertical;
+        }
+        button {
+            padding: 10px 20px;
+            font-size: 16px;
+            background: #007bff;
+            color: white;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+        }
+        button:hover {
+            background: #0056b3;
+        }
+        .result {
+            margin-top: 20px;
+            padding: 10px;
+            border: 1px solid #ddd;
+            background: #f0f0f0;
+        }
+    </style>
+</head>
+<body>
+    <h1>Page Action Input Test</h1>
+
+    <form id="test-form" onsubmit="handleSubmit(event)">
+        <h2>User Registration Form</h2>
+
+        <div class="form-group">
+            <label for="username">Username:</label>
+            <input type="text" id="username" name="username" placeholder="Enter username">
+        </div>
+
+        <div class="form-group">
+            <label for="email">Email:</label>
+            <input type="email" id="email" name="email" placeholder="user@example.com">
+        </div>
+
+        <div class="form-group">
+            <label for="password">Password:</label>
+            <input type="password" id="password" name="password" placeholder="Enter password">
+        </div>
+
+        <div class="form-group">
+            <label for="age">Age:</label>
+            <input type="number" id="age" name="age" placeholder="Enter age">
+        </div>
+
+        <div class="form-group">
+            <label for="bio">Bio:</label>
+            <textarea id="bio" name="bio" placeholder="Tell us about yourself..."></textarea>
+        </div>
+
+        <div class="form-group">
+            <label for="country">Country:</label>
+            <select id="country" name="country">
+                <option value="">Select a country</option>
+                <option value="us">United States</option>
+                <option value="uk">United Kingdom</option>
+                <option value="ca">Canada</option>
+                <option value="au">Australia</option>
+            </select>
+        </div>
+
+        <div class="form-group">
+            <label>
+                <input type="checkbox" id="terms" name="terms">
+                I agree to the terms and conditions
+            </label>
+        </div>
+
+        <button type="submit" id="submit-btn">Submit</button>
+        <button type="button" id="clear-btn" onclick="clearForm()">Clear</button>
+    </form>
+
+    <h2>Search Form</h2>
+    <form id="search-form" onsubmit="handleSearch(event)">
+        <div class="form-group">
+            <label for="search-input">Search:</label>
+            <input type="text" id="search-input" name="query" placeholder="Enter search query">
+        </div>
+        <button type="submit" id="search-btn">Search</button>
+    </form>
+
+    <div class="result">
+        <h3>Form Submissions</h3>
+        <div id="results"></div>
+    </div>
+
+    <script>
+        // Track input events
+        document.querySelectorAll('input, textarea, select').forEach(element => {
+            element.addEventListener('input', (e) => {
+                console.log('Input event:', e.target.id, e.target.value);
+            });
+
+            element.addEventListener('change', (e) => {
+                console.log('Change event:', e.target.id, e.target.value);
+            });
+        });
+
+        function handleSubmit(event) {
+            event.preventDefault();
+            const formData = new FormData(event.target);
+            const data = Object.fromEntries(formData.entries());
+
+            const results = document.getElementById('results');
+            results.innerHTML += `
+                <div style="margin: 10px 0; padding: 10px; border: 1px solid #ddd;">
+                    <strong>Registration Submitted:</strong><br>
+                    ${JSON.stringify(data, null, 2)}
+                </div>
+            `;
+
+            console.log('Form submitted:', data);
+        }
+
+        function handleSearch(event) {
+            event.preventDefault();
+            const query = document.getElementById('search-input').value;
+
+            const results = document.getElementById('results');
+            results.innerHTML += `
+                <div style="margin: 10px 0; padding: 10px; border: 1px solid #ddd;">
+                    <strong>Search Query:</strong> ${query}
+                </div>
+            `;
+
+            console.log('Search query:', query);
+        }
+
+        function clearForm() {
+            document.getElementById('test-form').reset();
+            console.log('Form cleared');
+        }
+    </script>
+</body>
+</html>

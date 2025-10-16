@@ -212,13 +212,18 @@ function setupMessageHandlers(): void {
   router.on(MessageType.TAB_COMMAND, async (message) => {
     const { command, args } = message.payload;
     const tabId = message.tabId;
-    
+
     if (!tabId) {
       throw new Error('Tab ID required for tab command');
     }
-    
+
     return executeTabCommand(tabId, command, args);
   });
+
+  // NOTE: PageAction execution logic removed from here.
+  // All PageAction tool execution now flows through:
+  // TurnManager.executeBrowserTool() → ToolRegistry.execute() → PageActionTool.executeImpl()
+  // See src/core/TurnManager.ts:774-822 for the execution entry point.
 }
 
 /**

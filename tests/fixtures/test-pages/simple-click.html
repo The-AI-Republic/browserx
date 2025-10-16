@@ -1,0 +1,102 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Simple Click Test Page</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            padding: 20px;
+            max-width: 800px;
+            margin: 0 auto;
+        }
+        button, a, div.clickable {
+            margin: 10px;
+            padding: 10px 20px;
+            font-size: 16px;
+        }
+        .clickable {
+            border: 1px solid #ccc;
+            cursor: pointer;
+            display: inline-block;
+            background: #f0f0f0;
+        }
+        .result {
+            margin-top: 20px;
+            padding: 10px;
+            border: 1px solid #ddd;
+            background: #f9f9f9;
+        }
+        .hidden {
+            display: none;
+        }
+    </style>
+</head>
+<body>
+    <h1>Page Action Click Test</h1>
+
+    <h2>Basic Clickable Elements</h2>
+    <button id="submit-btn" onclick="handleClick('submit-btn')">Submit Button</button>
+    <button id="cancel-btn" onclick="handleClick('cancel-btn')">Cancel Button</button>
+
+    <h2>Links</h2>
+    <a href="#section1" id="link-section1" onclick="handleClick('link-section1')">Go to Section 1</a>
+    <a href="#section2" id="link-section2" onclick="handleClick('link-section2')">Go to Section 2</a>
+    <a href="https://example.com" id="external-link" target="_blank">External Link</a>
+
+    <h2>Div with Click Handler</h2>
+    <div class="clickable" id="clickable-div" onclick="handleClick('clickable-div')">
+        Click me (I'm a div!)
+    </div>
+
+    <h2>Buttons with Different States</h2>
+    <button id="enabled-btn" onclick="handleClick('enabled-btn')">Enabled Button</button>
+    <button id="disabled-btn" disabled>Disabled Button</button>
+
+    <h2>Navigation Test</h2>
+    <button id="nav-btn" onclick="navigateToPage2()">Navigate to Page 2</button>
+
+    <h2>Modal Test</h2>
+    <button id="show-modal-btn" onclick="showModal()">Show Modal</button>
+
+    <div id="modal" class="hidden" style="position: fixed; top: 50%; left: 50%; transform: translate(-50%, -50%); background: white; padding: 20px; border: 2px solid #000; z-index: 1000;">
+        <h3>Modal Dialog</h3>
+        <p>This is a modal dialog.</p>
+        <button id="close-modal-btn" onclick="closeModal()">Close</button>
+    </div>
+
+    <div class="result">
+        <h3>Click Results</h3>
+        <div id="results"></div>
+    </div>
+
+    <script>
+        let clickCount = 0;
+
+        function handleClick(elementId) {
+            clickCount++;
+            const results = document.getElementById('results');
+            const timestamp = new Date().toISOString();
+            results.innerHTML += `<p>${clickCount}. Clicked ${elementId} at ${timestamp}</p>`;
+            console.log('Click event:', elementId);
+        }
+
+        function navigateToPage2() {
+            // In real test, this would navigate
+            alert('Would navigate to page 2');
+            handleClick('nav-btn');
+        }
+
+        function showModal() {
+            document.getElementById('modal').classList.remove('hidden');
+            handleClick('show-modal-btn');
+        }
+
+        function closeModal() {
+            document.getElementById('modal').classList.add('hidden');
+            handleClick('close-modal-btn');
+        }
+    </script>
+</body>
+</html>

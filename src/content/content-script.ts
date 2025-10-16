@@ -8,6 +8,11 @@ import { handleDOMCaptureRequest } from './domCaptureHandler';
 import type { DOMCaptureRequestMessage, DOMCaptureResponseMessage } from '../types/domMessages';
 import { captureInteractionContent } from '../tools/dom/interactionCapture';
 import type { CaptureRequest } from '../tools/dom/pageModel';
+import type {
+  ActionCommand,
+  ActionExecutionResult,
+  DetectedChanges
+} from '../types/page-actions';
 
 // Router instance
 let router: MessageRouter | null = null;
@@ -167,6 +172,18 @@ function setupMessageHandlers(): void {
     }
   });
 
+  // Handle Page Action requests (from PageActionTool)
+  router.on('PAGE_ACTION_EXECUTE' as MessageType, async (message) => {
+    try {
+      const result = await handlePageAction(message);
+      return result;
+    } catch (error) {
+      return {
+        success: false,
+        error: error instanceof Error ? error.message : 'Unknown error occurred'
+      };
+    }
+  });
 }
 
 /**
@@ -1127,5 +1144,89 @@ function getInitLevel(): number {
   return 4; // complete
 }
 
+/**
+ * Handle page action execution request (from PageActionTool)
+ */
+async function handlePageAction(message: any): Promise<any> {
+  const { action, selectorMap } = message;
+  const startTime = Date.now();
+
+  console.log(`[page-actions] Executing ${action.type} action on element:`, action.targetElement);
+
+  try {
+    let result: ActionExecutionResult;
+
+    // Route to appropriate action handler
+    switch (action.type) {
+      case 'click':
+        result = await executeClickAction(action);
+        break;
+
+      case 'input':
+        result = await executeInputAction(action);
+        break;
+
+      case 'scroll':
+        result = await executeScrollAction(action);
+        break;
+
+      case 'verify':
+        result = await executeVerifyAction(action);
+        break;
+
+      default:
+        throw new Error(`Unknown action type: ${action.type}`);
+    }
+
+    console.log(`[page-actions] Action completed in ${Date.now() - startTime}ms`);
+
+    return {
+      success: true,
+      result
+    };
+  } catch (error) {
+    console.error('[page-actions] Action failed:', error);
+
+    return {
+      success: false,
+      error: error instanceof Error ? error.message : String(error)
+    };
+  }
+}
+
+/**
+ * Execute click action
+ */
+async function executeClickAction(action: ActionCommand): Promise<ActionExecutionResult> {
+  const { ClickExecutor } = await import('../tools/page-action/ActionExecutor');
+  const executor = new ClickExecutor();
+  return executor.execute(action);
+}
+
+/**
+ * Execute input action
+ */
+async function executeInputAction(action: ActionCommand): Promise<ActionExecutionResult> {
+  const { InputExecutor } = await import('../tools/page-action/ActionExecutor');
+  const executor = new InputExecutor();
+  return executor.execute(action);
+}
+
+/**
+ * Execute scroll action
+ */
+async function executeScrollAction(action: ActionCommand): Promise<ActionExecutionResult> {
+  const { ScrollExecutor } = await import('../tools/page-action/ActionExecutor');
+  const executor = new ScrollExecutor();
+  return executor.execute(action);
+}
+
+/**
+ * Execute verify action
+ */
+async function executeVerifyAction(action: ActionCommand): Promise<ActionExecutionResult> {
+  throw new Error('Verify action not yet implemented');
+}
+
 // Export for testing
-export { getPageContext, selectElements, executeCommand, executeDOMTool };
+export { getPageContext, selectElements, executeCommand, executeDOMTool, handlePageAction };

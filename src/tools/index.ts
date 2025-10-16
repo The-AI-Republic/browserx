@@ -61,7 +61,7 @@ export async function registerTools(registry: ToolRegistry, toolsConfig: IToolsC
         case 'tab_tool':
           return toolsConfig.tab_tool === true;
         case 'page_action':
-          return true; // Always enabled - core functionality
+          return toolsConfig.page_action_tool === true;
         default:
           return false;
       }
@@ -145,10 +145,12 @@ export async function registerTools(registry: ToolRegistry, toolsConfig: IToolsC
       console.log('TabTool disabled in configuration, skipping...');
     }
 
-    // Page Action Tool (always enabled - core functionality)
+    // Page Action Tool
     if (isToolEnabled('page_action')) {
       const pageActionTool = new PageActionTool();
       await registerTool('page_action', pageActionTool);
+    } else {
+      console.log('PageActionTool disabled in configuration, skipping...');
     }
 
     console.log('Advanced browser tools registration completed');

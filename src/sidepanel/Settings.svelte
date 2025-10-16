@@ -273,7 +273,7 @@
 
       <div class="form-group">
         <label for="api-key" class="form-label">
-          OpenAI or Anthropic API Key
+          OpenAI API Key
         </label>
         <div class="input-group">
           {#if showApiKey}

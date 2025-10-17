@@ -9,11 +9,13 @@ export class ChromeAuthManager implements AuthManager {
   private static readonly STORAGE_KEYS = {
     AUTH_DATA: 'codex_auth_data',
     API_KEY: 'codex_api_key',
-    ENCRYPTED_SUFFIX: '_encrypted'
+    ENCRYPTED_SUFFIX: '_encrypted',
+    CRYPTO_KEY: 'codex_crypto_key'
   } as const;
 
   private currentAuth: CodexAuth | null = null;
   private initPromise: Promise<void> | null = null;
+  private cryptoKey: CryptoKey | null = null;
 
   constructor() {
     // Initialize auth manager asynchronously
@@ -40,11 +42,12 @@ export class ChromeAuthManager implements AuthManager {
         const encryptedKey = result[ChromeAuthManager.STORAGE_KEYS.API_KEY + ChromeAuthManager.STORAGE_KEYS.ENCRYPTED_SUFFIX];
         const apiKey = this.decrypt(encryptedKey);
         if (apiKey) {
+          // Create auth data without plaintext token
           this.currentAuth = {
             mode: AuthMode.ApiKey,
-            token: apiKey
+            plan_type: { type: 'unknown', plan: 'api_key' }
           };
-          // Save the auth data
+          // Save the auth data (without plaintext token)
           await this.saveAuthData();
         }
       }
@@ -65,9 +68,29 @@ export class ChromeAuthManager implements AuthManager {
 
   /**
    * Get current authentication data
+   * For API key mode, retrieves the decrypted key from secure storage
    */
   async auth(): Promise<CodexAuth | null> {
     await this.ensureInitialized();
+
+    if (!this.currentAuth) {
+      return null;
+    }
+
+    // For API key mode, retrieve the encrypted key and decrypt it
+    if (this.currentAuth.mode === AuthMode.ApiKey) {
+      const apiKey = await this.retrieveApiKey();
+      if (!apiKey) {
+        return null;
+      }
+
+      // Return auth with decrypted token (but don't store it)
+      return {
+        ...this.currentAuth,
+        token: apiKey
+      };
+    }
+
     return this.currentAuth;
   }
 
@@ -136,15 +159,14 @@ export class ChromeAuthManager implements AuthManager {
       [ChromeAuthManager.STORAGE_KEYS.API_KEY + ChromeAuthManager.STORAGE_KEYS.ENCRYPTED_SUFFIX]: encrypted
     });
 
-    // Update current auth
+    // Update current auth - DO NOT store plaintext token
     this.currentAuth = {
       mode: AuthMode.ApiKey,
-      token: apiKey,
       // Set default plan type for API key users
       plan_type: { type: 'unknown', plan: 'api_key' }
     };
 
-    // Save auth data
+    // Save auth data (without plaintext token)
     await this.saveAuthData();
   }
 
@@ -202,11 +224,13 @@ export class ChromeAuthManager implements AuthManager {
     // Remove from storage
     await chrome.storage.local.remove([
       ChromeAuthManager.STORAGE_KEYS.AUTH_DATA,
-      ChromeAuthManager.STORAGE_KEYS.API_KEY + ChromeAuthManager.STORAGE_KEYS.ENCRYPTED_SUFFIX
+      ChromeAuthManager.STORAGE_KEYS.API_KEY + ChromeAuthManager.STORAGE_KEYS.ENCRYPTED_SUFFIX,
+      ChromeAuthManager.STORAGE_KEYS.CRYPTO_KEY
     ]);
 
-    // Clear current auth
+    // Clear current auth and crypto key
     this.currentAuth = null;
+    this.cryptoKey = null;
   }
 
   /**
@@ -279,24 +303,108 @@ export class ChromeAuthManager implements AuthManager {
   }
 
   /**
-   * Basic encryption for API keys (base64 encoding with simple obfuscation)
-   * Note: This is not cryptographically secure, just basic obfuscation
-   * For production, consider using Web Crypto API
+   * Get or generate the encryption key
+   * Uses Web Crypto API with AES-GCM algorithm
    */
-  private encrypt(value: string): string {
-    // Simple obfuscation: reverse string and base64 encode
-    const reversed = value.split('').reverse().join('');
-    return btoa(reversed);
+  private async getCryptoKey(): Promise<CryptoKey> {
+    // Return cached key if available
+    if (this.cryptoKey) {
+      return this.cryptoKey;
+    }
+
+    // Try to load existing key from storage
+    const result = await chrome.storage.local.get([ChromeAuthManager.STORAGE_KEYS.CRYPTO_KEY]);
+    const storedKey = result[ChromeAuthManager.STORAGE_KEYS.CRYPTO_KEY];
+
+    if (storedKey) {
+      // Import the stored key
+      try {
+        this.cryptoKey = await crypto.subtle.importKey(
+          'raw',
+          this.base64ToArrayBuffer(storedKey),
+          { name: 'AES-GCM', length: 256 },
+          true,
+          ['encrypt', 'decrypt']
+        );
+        return this.cryptoKey;
+      } catch (error) {
+        console.error('Failed to import stored crypto key, generating new one:', error);
+      }
+    }
+
+    // Generate new key if none exists or import failed
+    this.cryptoKey = await crypto.subtle.generateKey(
+      { name: 'AES-GCM', length: 256 },
+      true, // extractable (so we can store it)
+      ['encrypt', 'decrypt']
+    );
+
+    // Export and store the key
+    const exportedKey = await crypto.subtle.exportKey('raw', this.cryptoKey);
+    const keyBase64 = this.arrayBufferToBase64(exportedKey);
+    await chrome.storage.local.set({
+      [ChromeAuthManager.STORAGE_KEYS.CRYPTO_KEY]: keyBase64
+    });
+
+    return this.cryptoKey;
   }
 
   /**
-   * Decrypt obfuscated API key
+   * Encrypt API key using AES-GCM
+   * Returns base64-encoded string containing IV + encrypted data
    */
-  private decrypt(encrypted: string): string | null {
+  private async encrypt(value: string): Promise<string> {
+    const key = await this.getCryptoKey();
+
+    // Convert string to Uint8Array
+    const encoder = new TextEncoder();
+    const data = encoder.encode(value);
+
+    // Generate random IV (Initialization Vector)
+    const iv = crypto.getRandomValues(new Uint8Array(12));
+
+    // Encrypt the data
+    const encryptedBuffer = await crypto.subtle.encrypt(
+      { name: 'AES-GCM', iv },
+      key,
+      data
+    );
+
+    // Combine IV + encrypted data
+    const combined = new Uint8Array(iv.length + encryptedBuffer.byteLength);
+    combined.set(iv, 0);
+    combined.set(new Uint8Array(encryptedBuffer), iv.length);
+
+    // Convert to base64 for storage
+    return this.arrayBufferToBase64(combined.buffer);
+  }
+
+  /**
+   * Decrypt API key using AES-GCM
+   * Expects base64-encoded string containing IV + encrypted data
+   */
+  private async decrypt(encrypted: string): Promise<string | null> {
     try {
-      const decoded = atob(encrypted);
-      // Reverse the string back
-      return decoded.split('').reverse().join('');
+      const key = await this.getCryptoKey();
+
+      // Decode base64
+      const combined = this.base64ToArrayBuffer(encrypted);
+      const combinedArray = new Uint8Array(combined);
+
+      // Extract IV and encrypted data
+      const iv = combinedArray.slice(0, 12);
+      const data = combinedArray.slice(12);
+
+      // Decrypt the data
+      const decryptedBuffer = await crypto.subtle.decrypt(
+        { name: 'AES-GCM', iv },
+        key,
+        data
+      );
+
+      // Convert back to string
+      const decoder = new TextDecoder();
+      return decoder.decode(decryptedBuffer);
     } catch (error) {
       console.error('Failed to decrypt API key:', error);
       return null;
@@ -304,12 +412,47 @@ export class ChromeAuthManager implements AuthManager {
   }
 
   /**
+   * Convert ArrayBuffer to base64 string
+   */
+  private arrayBufferToBase64(buffer: ArrayBuffer): string {
+    const bytes = new Uint8Array(buffer);
+    let binary = '';
+    for (let i = 0; i < bytes.byteLength; i++) {
+      binary += String.fromCharCode(bytes[i]);
+    }
+    return btoa(binary);
+  }
+
+  /**
+   * Convert base64 string to ArrayBuffer
+   */
+  private base64ToArrayBuffer(base64: string): ArrayBuffer {
+    const binary = atob(base64);
+    const bytes = new Uint8Array(binary.length);
+    for (let i = 0; i < binary.length; i++) {
+      bytes[i] = binary.charCodeAt(i);
+    }
+    return bytes.buffer;
+  }
+
+  /**
    * Check if user is authenticated
    */
   async isAuthenticated(): Promise<boolean> {
     await this.ensureInitialized();
-    return this.currentAuth !== null &&
-           (this.currentAuth.token !== undefined || this.currentAuth.mode === AuthMode.Local);
+
+    if (!this.currentAuth) {
+      return false;
+    }
+
+    // For API key mode, check if encrypted key exists
+    if (this.currentAuth.mode === AuthMode.ApiKey) {
+      const apiKey = await this.retrieveApiKey();
+      return apiKey !== null;
+    }
+
+    // For other modes, check for token in currentAuth
+    return this.currentAuth.token !== undefined || this.currentAuth.mode === AuthMode.Local;
   }
 
   /**

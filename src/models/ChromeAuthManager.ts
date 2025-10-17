@@ -180,6 +180,7 @@ export class ChromeAuthManager implements AuthManager {
 
   /**
    * Retrieve API key
+   * Throws error if decryption fails (likely due to old encryption format)
    */
   async retrieveApiKey(): Promise<string | null> {
     await this.ensureInitialized();
@@ -194,8 +195,14 @@ export class ChromeAuthManager implements AuthManager {
         return null;
       }
 
-      return this.decrypt(encrypted);
+      return await this.decrypt(encrypted);
     } catch (error) {
+      if (error instanceof Error && error.message === 'DECRYPTION_FAILED') {
+        console.error('API key decryption failed - likely old encryption format. User should clear and re-enter API key.');
+        // Clear the corrupted data
+        await this.clearAuth();
+        throw new Error('API_KEY_DECRYPTION_FAILED');
+      }
       console.error('Failed to retrieve API key:', error);
       return null;
     }
@@ -426,8 +433,9 @@ export class ChromeAuthManager implements AuthManager {
       const decoder = new TextDecoder();
       return decoder.decode(decryptedBuffer);
     } catch (error) {
-      console.error('Failed to decrypt API key:', error);
-      return null;
+      console.error('Failed to decrypt API key with AES-GCM:', error);
+      // Don't return null - throw a specific error so callers can handle it
+      throw new Error('DECRYPTION_FAILED');
     }
   }
 

@@ -52,7 +52,18 @@
       }
     } catch (error) {
       console.error('Failed to load settings:', error);
-      showMessage('Failed to load settings', 'error');
+
+      // Check if it's a decryption error (old encryption format)
+      if (error instanceof Error && error.message === 'API_KEY_DECRYPTION_FAILED') {
+        showMessage('API key format outdated. Storage cleared. Please re-enter your API key.', 'error');
+        // Reset state since clearAuth was already called
+        isAuthenticated = false;
+        currentAuthMode = null;
+        apiKey = '';
+        maskedApiKey = '';
+      } else {
+        showMessage('Failed to load settings', 'error');
+      }
     } finally {
       isLoading = false;
     }

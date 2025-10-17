@@ -40,11 +40,15 @@ export class ChromeAuthManager implements AuthManager {
       // If no auth data but encrypted API key exists, create auth from API key
       if (!this.currentAuth && result[ChromeAuthManager.STORAGE_KEYS.API_KEY + ChromeAuthManager.STORAGE_KEYS.ENCRYPTED_SUFFIX]) {
         const encryptedKey = result[ChromeAuthManager.STORAGE_KEYS.API_KEY + ChromeAuthManager.STORAGE_KEYS.ENCRYPTED_SUFFIX];
-        const apiKey = this.decrypt(encryptedKey);
+        const apiKey = await this.decrypt(encryptedKey);
         if (apiKey) {
+          // Detect API provider from key
+          const apiProvider = this.detectApiProvider(apiKey);
+
           // Create auth data without plaintext token
           this.currentAuth = {
             mode: AuthMode.ApiKey,
+            api_provider: apiProvider,
             plan_type: { type: 'unknown', plan: 'api_key' }
           };
           // Save the auth data (without plaintext token)
@@ -152,16 +156,20 @@ export class ChromeAuthManager implements AuthManager {
     }
 
     // Encrypt the API key
-    const encrypted = this.encrypt(apiKey);
+    const encrypted = await this.encrypt(apiKey);
 
     // Store encrypted API key
     await chrome.storage.local.set({
       [ChromeAuthManager.STORAGE_KEYS.API_KEY + ChromeAuthManager.STORAGE_KEYS.ENCRYPTED_SUFFIX]: encrypted
     });
 
+    // Detect API provider from key format
+    const apiProvider = this.detectApiProvider(apiKey);
+
     // Update current auth - DO NOT store plaintext token
     this.currentAuth = {
       mode: AuthMode.ApiKey,
+      api_provider: apiProvider,
       // Set default plan type for API key users
       plan_type: { type: 'unknown', plan: 'api_key' }
     };
@@ -213,6 +221,18 @@ export class ChromeAuthManager implements AuthManager {
     }
 
     return false;
+  }
+
+  /**
+   * Detect API provider from key format
+   */
+  private detectApiProvider(apiKey: string): string {
+    if (apiKey.startsWith('sk-ant-')) {
+      return 'anthropic';
+    } else if (apiKey.startsWith('sk-')) {
+      return 'openai';
+    }
+    return 'unknown';
   }
 
   /**

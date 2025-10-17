@@ -27,7 +27,7 @@ export type PlanType =
  */
 export interface CodexAuth {
   mode: AuthMode;
-  token?: string;
+  api_provider?: string;
   refresh_token?: string;
   account_id?: string;
   plan_type?: PlanType;

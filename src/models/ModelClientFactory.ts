@@ -80,9 +80,10 @@ export class ModelClientFactory {
 
   /**
    * Setup storage listener to invalidate cache when API keys change
+   * Also recreates clients based on the detected api_provider
    */
   private setupStorageListener(): void {
-    this.storageListener = (changes, areaName) => {
+    this.storageListener = async (changes, areaName) => {
       // Check if any API key related storage changed
       const relevantKeys = [
         STORAGE_KEYS.OPENAI_API_KEY,
@@ -90,11 +91,44 @@ export class ModelClientFactory {
         'codex_auth_data', // ChromeAuthManager auth data
       ];
 
+      let shouldRecreateClient = false;
+      let detectedProvider: ModelProvider | null = null;
+
       for (const key of relevantKeys) {
         if (changes[key]) {
-          console.log(`[ModelClientFactory] API key changed in ${areaName} storage, clearing cache`);
-          this.clearCache();
-          break;
+          console.log(`[ModelClientFactory] Storage changed: ${key} in ${areaName}`);
+
+          // Check if we have a new API key
+          if (key === 'codex_api_key_encrypted' && changes[key].newValue) {
+            shouldRecreateClient = true;
+          }
+
+          // Check if auth data changed and has api_provider
+          if (key === 'codex_auth_data' && changes[key].newValue) {
+            const authData = changes[key].newValue;
+            if (authData.api_provider) {
+              detectedProvider = authData.api_provider as ModelProvider;
+              shouldRecreateClient = true;
+              console.log(`[ModelClientFactory] Detected provider: ${detectedProvider}`);
+            }
+          }
+        }
+      }
+
+      // Always clear cache when keys change
+      console.log(`[ModelClientFactory] Clearing cache due to storage changes`);
+      this.clearCache();
+
+      // Recreate client with detected provider (default to openai)
+      if (shouldRecreateClient) {
+        const provider = detectedProvider || 'openai';
+        console.log(`[ModelClientFactory] Recreating client for provider: ${provider}`);
+
+        try {
+          await this.createClient(provider);
+          console.log(`[ModelClientFactory] Successfully created client for ${provider}`);
+        } catch (error) {
+          console.error(`[ModelClientFactory] Failed to create client for ${provider}:`, error);
         }
       }
     };

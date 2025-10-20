@@ -6,6 +6,7 @@
  */
 
 import { BaseTool, createToolDefinition, type BaseToolRequest, type BaseToolOptions, type ToolDefinition } from './BaseTool';
+import { TabGroupManager } from './tab/TabGroupManager';
 
 /**
  * Form field types
@@ -283,7 +284,13 @@ export class FormAutomationTool extends BaseTool {
     }
 
     if (url) {
-      return await chrome.tabs.create({ url, active: true });
+      const tab = await chrome.tabs.create({ url, active: false });
+
+      // Add tab to BrowserX group
+      const tabGroupManager = TabGroupManager.getInstance();
+      await tabGroupManager.addTabToGroup(tab.id!);
+
+      return tab;
     }
 
     return await this.getActiveTab();

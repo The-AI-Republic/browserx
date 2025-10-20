@@ -656,6 +656,7 @@ export class CodexAgent {
    * Cleanup resources
    */
   async cleanup(): Promise<void> {
+    await this.toolRegistry.cleanup();
     this.toolRegistry.clear();
     this.submissionQueue = [];
     this.eventQueue = [];

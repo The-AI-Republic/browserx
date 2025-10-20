@@ -131,6 +131,14 @@ export const DEFAULT_TOOLS_CONFIG: IToolsConfig = {
       options: {
         maxRecords: 1000
       }
+    },
+    'page_action': {
+      enabled: true,
+      timeout: 60000,
+      options: {
+        retryAttempts: 3,
+        retryDelay: 100
+      }
     }
   }
 };

@@ -1,6 +1,6 @@
 {
   "manifest_version": 3,
-  "name": "Codex For Chrome: In-browser AI Agent",
+  "name": "Codex For Chrome: General AI Agent for work tasks automation",
   "version": "0.0.1",
   "description": "AI-powered browser automation agent preserving codex-rs SQ/EQ architecture",
   "permissions": [

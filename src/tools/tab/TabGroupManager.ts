@@ -67,6 +67,7 @@ export class TabGroupManager {
 
         // Ensure it has the correct color
         await chrome.tabGroups.update(this.groupId, {
+          title: this.groupTitle,
           color: this.groupColor,
         });
       } else {
@@ -89,24 +90,35 @@ export class TabGroupManager {
       await this.initialize();
 
       // Validate tab exists
-      const tab = await chrome.tabs.get(tabId);
+      let tab = await chrome.tabs.get(tabId);
       if (!tab) {
         console.error(`Tab ${tabId} not found`);
         return null;
       }
 
-      // If we don't have a group yet, create one
-      if (this.groupId === null) {
-        await this.createGroup(tabId);
-        return this.groupId;
+      let targetWindowId: number | undefined;
+
+      if (this.groupId !== null) {
+        try {
+          const groupInfo = await chrome.tabGroups.get(this.groupId);
+          targetWindowId = groupInfo.windowId;
+        } catch {
+          // Group doesn't exist anymore, create a new one
+          console.log('Previous group no longer exists, creating new one');
+          this.groupId = null;
+        }
       }
 
-      // Verify the group still exists
-      try {
-        await chrome.tabGroups.get(this.groupId);
-      } catch {
-        // Group doesn't exist anymore, create a new one
-        console.log('Previous group no longer exists, creating new one');
+      const normalizedTab = await this.ensureTabInNormalWindow(tab, targetWindowId);
+      if (!normalizedTab) {
+        console.warn(`Tab ${tabId} could not be aligned to a normal window; skipping grouping`);
+        return null;
+      }
+      tab = normalizedTab;
+      tabId = tab.id!;
+
+      // If we don't have a group yet, create one
+      if (this.groupId === null) {
         await this.createGroup(tabId);
         return this.groupId;
       }
@@ -131,6 +143,21 @@ export class TabGroupManager {
    */
   private async createGroup(tabId: number): Promise<void> {
     try {
+      // Double-check tab is groupable before creating the group
+      let tab = await chrome.tabs.get(tabId);
+      if (!tab) {
+        console.error(`Unable to create group: tab ${tabId} not found`);
+        return;
+      }
+
+      const normalizedTab = await this.ensureTabInNormalWindow(tab);
+      if (!normalizedTab) {
+        console.warn(`Cannot create BrowserX group: tab ${tabId} could not be moved to a normal window`);
+        return;
+      }
+      tab = normalizedTab;
+      tabId = tab.id!;
+
       // Group the tab (this creates a new group)
       const groupId = await chrome.tabs.group({ tabIds: tabId });
 
@@ -220,5 +247,113 @@ export class TabGroupManager {
    */
   static resetInstance(): void {
     TabGroupManager.instance = null;
+  }
+
+  /**
+   * Determine whether the tab resides in a normal window that supports grouping
+   */
+  private async isTabInNormalWindow(tab: chrome.tabs.Tab): Promise<boolean> {
+    if (tab.windowId === undefined || tab.id === undefined) {
+      console.warn('Tab is missing window or tab ID, cannot determine group eligibility');
+      return false;
+    }
+
+    try {
+      const windowInfo = await chrome.windows.get(tab.windowId);
+      if (!windowInfo || windowInfo.type !== 'normal') {
+        console.warn(
+          `Window ${tab.windowId} is not groupable (type: ${windowInfo?.type ?? 'unknown'})`,
+        );
+        return false;
+      }
+      return true;
+    } catch (error) {
+      console.warn(`Failed to determine window type for tab ${tab.id}:`, error);
+      return false;
+    }
+  }
+
+  /**
+   * Ensure the tab is in a normal window, moving or creating one if necessary
+   */
+  private async ensureTabInNormalWindow(
+    tab: chrome.tabs.Tab,
+    targetWindowId?: number,
+  ): Promise<chrome.tabs.Tab | null> {
+    if (tab.id === undefined) {
+      console.warn('Cannot normalize tab without a valid ID');
+      return null;
+    }
+
+    try {
+      if (targetWindowId !== undefined) {
+        try {
+          const targetWindow = await chrome.windows.get(targetWindowId);
+          if (targetWindow?.type === 'normal') {
+            if (tab.windowId !== targetWindowId) {
+              const moved = await this.moveTabToWindow(tab.id, targetWindowId);
+              if (moved) {
+                return moved;
+              }
+              console.warn(`Failed to move tab ${tab.id} to target window ${targetWindowId}`);
+              return null;
+            }
+
+            if (await this.isTabInNormalWindow(tab)) {
+              return tab;
+            }
+          } else {
+            console.warn(
+              `Target window ${targetWindowId} is not normal (type: ${targetWindow?.type ?? 'unknown'})`,
+            );
+            targetWindowId = undefined;
+          }
+        } catch (error) {
+          console.warn(`Unable to retrieve target window ${targetWindowId}:`, error);
+          targetWindowId = undefined;
+        }
+      }
+
+      if (await this.isTabInNormalWindow(tab)) {
+        // Already in a normal window and no specific target required
+        return tab;
+      }
+
+      const normalWindows = await chrome.windows.getAll({ windowTypes: ['normal'] });
+      let candidateWindowId = normalWindows.find(win => !win.incognito)?.id ?? normalWindows[0]?.id;
+
+      if (candidateWindowId === undefined) {
+        const newWindow = await chrome.windows.create({ focused: true });
+        candidateWindowId = newWindow.id ?? undefined;
+      }
+
+      if (candidateWindowId === undefined) {
+        console.warn('Unable to find or create a normal window for grouping');
+        return null;
+      }
+
+      return await this.moveTabToWindow(tab.id, candidateWindowId);
+    } catch (error) {
+      console.error(`Failed to ensure tab ${tab.id} is in a normal window:`, error);
+      return null;
+    }
+  }
+
+  /**
+   * Move the tab to the specified window and return the updated tab details
+   */
+  private async moveTabToWindow(tabId: number, windowId: number): Promise<chrome.tabs.Tab | null> {
+    try {
+      const moved = await chrome.tabs.move(tabId, { windowId, index: -1 });
+      const movedTab = Array.isArray(moved) ? moved[0] : moved;
+      if (movedTab) {
+        return movedTab;
+      }
+      // Fallback: fetch the tab directly
+      return await chrome.tabs.get(tabId);
+    } catch (error) {
+      console.error(`Failed to move tab ${tabId} to window ${windowId}:`, error);
+      return null;
+    }
   }
 }

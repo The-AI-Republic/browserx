@@ -1,5 +1,5 @@
 /**
- * TaskRunner implementation - ports run_task functionality from codex-rs
+ * TaskRunner implementation - ports run_task functionality from browserx-rs
  * Manages task execution lifecycle, handles task cancellation, and emits progress events
  * Enhanced with AgentTask integration - contains the majority of task execution logic
  */
@@ -81,7 +81,7 @@ interface LoopOutcomeInit {
 
 /**
  * TaskRunner handles the execution of a complete task which may involve multiple turns
- * Port of run_task function from codex-rs/core/src/codex.rs
+ * Port of run_task function from browserx-rs/core/src/browserx.rs
  * Enhanced with AgentTask coordination - maintains the majority of task execution logic
  */
 export class TaskRunner {
@@ -530,7 +530,7 @@ export class TaskRunner {
 
   /**
    * Process the results of a turn execution
-   * Ports logic from codex-rs/core/src/codex.rs lines 1707-1808
+   * Ports logic from browserx-rs/core/src/browserx.rs lines 1707-1808
    */
   private async processTurnResult(
     turnResult: TurnRunResult
@@ -550,7 +550,7 @@ export class TaskRunner {
       const messageItem = item as ResponseItem;
 
       // Match the Rust implementation's pattern matching logic
-      // Lines 1711-1798 in codex.rs
+      // Lines 1711-1798 in browserx.rs
 
       // Case 1: Assistant message without response (task complete indicator)
       // Rust: (ResponseItem::Message { role, .. }, None) if role == "assistant"
@@ -642,7 +642,7 @@ export class TaskRunner {
 
   /**
    * Extract last assistant message text from response items
-   * Ports get_last_assistant_message_from_turn from codex-rs/core/src/codex.rs lines 2275-2293
+   * Ports get_last_assistant_message_from_turn from browserx-rs/core/src/browserx.rs lines 2275-2293
    */
   private getLastAssistantMessageFromTurn(responses: ResponseItem[]): string | undefined {
     // Iterate in reverse to find the last assistant message

@@ -2,7 +2,7 @@
  * Persistence policy for RolloutRecorder
  * Determines which RolloutItems should be persisted to IndexedDB
  *
- * Matches Rust logic from codex-rs/core/src/rollout/policy.rs
+ * Matches Rust logic from browserx-rs/core/src/rollout/policy.rs
  */
 
 import type { RolloutItem } from './types';

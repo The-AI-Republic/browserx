@@ -1,6 +1,6 @@
 /**
  * RolloutRecorder - Main class for recording agent conversation rollouts
- * TypeScript implementation matching Rust codex-rs/core/src/rollout/recorder.rs
+ * TypeScript implementation matching Rust browserx-rs/core/src/rollout/recorder.rs
  *
  * Stores conversation history in IndexedDB with TTL support and pagination.
  */
@@ -36,7 +36,7 @@ import {
 // Constants
 // ============================================================================
 
-const DB_NAME = 'CodexRollouts';
+const DB_NAME = 'BrowserxRollouts';
 const DB_VERSION = 2;
 const STORE_ROLLOUTS = 'rollouts';
 const STORE_ROLLOUT_ITEMS = 'rollout_items';

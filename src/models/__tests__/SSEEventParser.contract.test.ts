@@ -1,7 +1,7 @@
 /**
  * SSEEventParser Contract Tests
  * Reference: contracts/SSE.contract.md
- * Rust Reference: codex-rs/core/src/client.rs:624-848
+ * Rust Reference: browserx-rs/core/src/client.rs:624-848
  *
  * These tests verify that the TypeScript SSE event parsing
  * matches the Rust process_sse logic exactly.

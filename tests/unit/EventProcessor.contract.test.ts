@@ -29,7 +29,7 @@ describe('EventProcessor Contract Tests', () => {
 
     expect(result).not.toBeNull();
     expect(result?.category).toBe('message');
-    expect(result?.title).toBe('codex');
+    expect(result?.title).toBe('browserx');
     expect(result?.content).toBe('Test message');
   });
 
@@ -109,6 +109,46 @@ describe('EventProcessor Contract Tests', () => {
     expect(result).not.toBeNull();
     expect(result?.category).toBe('error');
     expect(result?.content).toContain('Something went wrong');
+  });
+
+  it('should process StreamError event with error field', () => {
+    const event: Event = {
+      id: 'evt_501',
+      msg: {
+        type: 'StreamError',
+        data: {
+          error: 'Stream connection failed',
+          retrying: true,
+          attempt: 2,
+        },
+      },
+    };
+
+    const result = processor.processEvent(event);
+
+    expect(result).not.toBeNull();
+    expect(result?.category).toBe('error');
+    expect(result?.title).toBe('STREAM ERROR');
+    expect(result?.content).toBe('Stream connection failed (retrying...)');
+    expect(result?.status).toBe('error');
+  });
+
+  it('should process StreamError event without retrying', () => {
+    const event: Event = {
+      id: 'evt_502',
+      msg: {
+        type: 'StreamError',
+        data: {
+          error: 'Stream terminated',
+          retrying: false,
+        },
+      },
+    };
+
+    const result = processor.processEvent(event);
+
+    expect(result).not.toBeNull();
+    expect(result?.content).toBe('Stream terminated');
   });
 
   it('should clear state on reset', () => {

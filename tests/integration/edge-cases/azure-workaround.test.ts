@@ -4,7 +4,7 @@
  * Tests that store: true is applied when baseUrl contains 'azure'
  *
  * **Quickstart Reference**: Edge Case 5
- * **Rust Reference**: codex-rs/core/src/client.rs Lines 223, 233 (Azure workaround)
+ * **Rust Reference**: browserx-rs/core/src/client.rs Lines 223, 233 (Azure workaround)
  * **Functional Requirement**: FR-030 (detect Azure endpoints and set store: true)
  */
 

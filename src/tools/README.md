@@ -1,6 +1,6 @@
 # Browser Tools System
 
-This directory contains the complete Browser Tools System implementation for the codex-chrome extension. The system provides a comprehensive set of tools for browser automation and interaction.
+This directory contains the complete Browser Tools System implementation for the browserx-chrome extension. The system provides a comprehensive set of tools for browser automation and interaction.
 
 ## Architecture Overview
 

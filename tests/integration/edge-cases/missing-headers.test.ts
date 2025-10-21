@@ -5,7 +5,7 @@
  * and handles partial headers correctly
  *
  * **Quickstart Reference**: Edge Case 3
- * **Rust Reference**: codex-rs/core/src/client.rs Lines 580-619 (parseRateLimitSnapshot)
+ * **Rust Reference**: browserx-rs/core/src/client.rs Lines 580-619 (parseRateLimitSnapshot)
  * **Functional Requirement**: FR-006 (parseRateLimitSnapshot from headers)
  */
 
@@ -48,9 +48,9 @@ describe('Edge Case: Missing Rate Limit Headers', () => {
   it('should handle partial headers - primary only', () => {
     // Given: Response with only primary rate limit headers
     const headers = new Headers({
-      'x-codex-primary-used-percent': '75.5',
-      'x-codex-primary-remaining-tokens': '12500',
-      'x-codex-primary-reset-at': '1640000000',
+      'x-browserx-primary-used-percent': '75.5',
+      'x-browserx-primary-remaining-tokens': '12500',
+      'x-browserx-primary-reset-at': '1640000000',
     });
 
     // When: Parse rate limit snapshot
@@ -71,9 +71,9 @@ describe('Edge Case: Missing Rate Limit Headers', () => {
   it('should handle partial headers - secondary only', () => {
     // Given: Response with only secondary rate limit headers
     const headers = new Headers({
-      'x-codex-secondary-used-percent': '45.2',
-      'x-codex-secondary-remaining-tokens': '25000',
-      'x-codex-secondary-reset-at': '1640003600',
+      'x-browserx-secondary-used-percent': '45.2',
+      'x-browserx-secondary-remaining-tokens': '25000',
+      'x-browserx-secondary-reset-at': '1640003600',
     });
 
     // When: Parse rate limit snapshot
@@ -93,12 +93,12 @@ describe('Edge Case: Missing Rate Limit Headers', () => {
   it('should handle both primary and secondary headers', () => {
     // Given: Response with both rate limit windows
     const headers = new Headers({
-      'x-codex-primary-used-percent': '80.0',
-      'x-codex-primary-remaining-tokens': '10000',
-      'x-codex-primary-reset-at': '1640000000',
-      'x-codex-secondary-used-percent': '50.0',
-      'x-codex-secondary-remaining-tokens': '20000',
-      'x-codex-secondary-reset-at': '1640003600',
+      'x-browserx-primary-used-percent': '80.0',
+      'x-browserx-primary-remaining-tokens': '10000',
+      'x-browserx-primary-reset-at': '1640000000',
+      'x-browserx-secondary-used-percent': '50.0',
+      'x-browserx-secondary-remaining-tokens': '20000',
+      'x-browserx-secondary-reset-at': '1640003600',
     });
 
     // When: Parse rate limit snapshot
@@ -121,9 +121,9 @@ describe('Edge Case: Missing Rate Limit Headers', () => {
   it('should handle invalid header values gracefully', () => {
     // Given: Headers with invalid/non-numeric values
     const headers = new Headers({
-      'x-codex-primary-used-percent': 'invalid',
-      'x-codex-primary-remaining-tokens': 'not-a-number',
-      'x-codex-primary-reset-at': 'abc',
+      'x-browserx-primary-used-percent': 'invalid',
+      'x-browserx-primary-remaining-tokens': 'not-a-number',
+      'x-browserx-primary-reset-at': 'abc',
     });
 
     // When: Parse rate limit snapshot
@@ -141,8 +141,8 @@ describe('Edge Case: Missing Rate Limit Headers', () => {
   it('should handle empty string header values', () => {
     // Given: Headers with empty strings
     const headers = new Headers({
-      'x-codex-primary-used-percent': '',
-      'x-codex-primary-remaining-tokens': '',
+      'x-browserx-primary-used-percent': '',
+      'x-browserx-primary-remaining-tokens': '',
     });
 
     // When: Parse rate limit snapshot
@@ -156,9 +156,9 @@ describe('Edge Case: Missing Rate Limit Headers', () => {
   it('should handle missing individual fields', () => {
     // Given: Incomplete primary window (missing reset_at)
     const headers = new Headers({
-      'x-codex-primary-used-percent': '75.5',
-      'x-codex-primary-remaining-tokens': '12500',
-      // Missing: x-codex-primary-reset-at
+      'x-browserx-primary-used-percent': '75.5',
+      'x-browserx-primary-remaining-tokens': '12500',
+      // Missing: x-browserx-primary-reset-at
     });
 
     // When: Parse rate limit snapshot
@@ -190,9 +190,9 @@ describe('Edge Case: Missing Rate Limit Headers', () => {
     {
       // Given: Response with partial headers (only primary)
       const headers = new Headers();
-      headers.set('x-codex-primary-used-percent', '75.5');
-      headers.set('x-codex-primary-remaining-tokens', '12500');
-      headers.set('x-codex-primary-reset-at', '1640000000');
+      headers.set('x-browserx-primary-used-percent', '75.5');
+      headers.set('x-browserx-primary-remaining-tokens', '12500');
+      headers.set('x-browserx-primary-reset-at', '1640000000');
 
       const partialSnapshot = client.parseRateLimitSnapshot(headers);
 
@@ -207,9 +207,9 @@ describe('Edge Case: Missing Rate Limit Headers', () => {
   it('should preserve precision for floating point percentages', () => {
     // Given: Headers with precise floating point values
     const headers = new Headers({
-      'x-codex-primary-used-percent': '75.555',
-      'x-codex-primary-remaining-tokens': '12345',
-      'x-codex-primary-reset-at': '1640000000',
+      'x-browserx-primary-used-percent': '75.555',
+      'x-browserx-primary-remaining-tokens': '12345',
+      'x-browserx-primary-reset-at': '1640000000',
     });
 
     // When: Parse rate limit snapshot
@@ -223,9 +223,9 @@ describe('Edge Case: Missing Rate Limit Headers', () => {
   it('should handle zero values correctly', () => {
     // Given: Headers with zero values (valid edge case)
     const headers = new Headers({
-      'x-codex-primary-used-percent': '0',
-      'x-codex-primary-remaining-tokens': '0',
-      'x-codex-primary-reset-at': '1640000000',
+      'x-browserx-primary-used-percent': '0',
+      'x-browserx-primary-remaining-tokens': '0',
+      'x-browserx-primary-reset-at': '1640000000',
     });
 
     // When: Parse rate limit snapshot
@@ -240,9 +240,9 @@ describe('Edge Case: Missing Rate Limit Headers', () => {
   it('should handle 100% used correctly', () => {
     // Given: Headers showing rate limit fully exhausted
     const headers = new Headers({
-      'x-codex-primary-used-percent': '100.0',
-      'x-codex-primary-remaining-tokens': '0',
-      'x-codex-primary-reset-at': '1640000000',
+      'x-browserx-primary-used-percent': '100.0',
+      'x-browserx-primary-remaining-tokens': '0',
+      'x-browserx-primary-reset-at': '1640000000',
     });
 
     // When: Parse rate limit snapshot

@@ -1,5 +1,5 @@
 import { AuthMode } from './types/index.js';
-import type { AuthManager, CodexAuth, KnownPlan, PlanType } from './types/index.js';
+import type { AuthManager, BrowserxAuth, KnownPlan, PlanType } from './types/index.js';
 import { AgentConfig } from '../config/AgentConfig.js';
 import { encryptApiKey, decryptApiKey } from '../utils/encryption.js';
 
@@ -8,7 +8,7 @@ import { encryptApiKey, decryptApiKey } from '../utils/encryption.js';
  * Handles secure storage and management of API keys and authentication data
  */
 export class ChromeAuthManager implements AuthManager {
-  private currentAuth: CodexAuth | null = null;
+  private currentAuth: BrowserxAuth | null = null;
   private initPromise: Promise<void> | null = null;
   private agentConfig: AgentConfig;
 
@@ -60,7 +60,7 @@ export class ChromeAuthManager implements AuthManager {
   /**
    * Get current authentication data
    */
-  async auth(): Promise<CodexAuth | null> {
+  async auth(): Promise<BrowserxAuth | null> {
     await this.ensureInitialized();
     return this.currentAuth;
   }

@@ -1,5 +1,5 @@
 /**
- * Model clients for codex-chrome extension
+ * Model clients for browserx-chrome extension
  * Exports all model client components
  */
 
@@ -21,7 +21,7 @@ export {
 export type { ToolDefinition } from '../tools/BaseTool';
 
 // Provider implementations
-// Note: AnthropicClient removed - not supported in Rust codex-rs implementation
+// Note: AnthropicClient removed - not supported in Rust browserx-rs implementation
 // Note: OpenAIClient removed - replaced by OpenAIResponsesClient (Responses API)
 export { OpenAIResponsesClient, type OpenAIResponsesConfig } from './OpenAIResponsesClient';
 
@@ -33,7 +33,7 @@ export {
   type ModelClientConfig,
 } from './ModelClientFactory';
 
-// Legacy files removed - not in Rust codex-rs implementation
+// Legacy files removed - not in Rust browserx-rs implementation
 // RateLimitManager - rate limiting handled inline in ModelClient
 // TokenUsageTracker - token tracking not in Rust client.rs
 

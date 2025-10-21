@@ -6,6 +6,7 @@
  */
 
 import { BaseTool, createToolDefinition, type BaseToolRequest, type BaseToolOptions, type ToolDefinition } from './BaseTool';
+import { TabGroupManager } from './tab/TabGroupManager';
 
 /**
  * Tab tool request interface
@@ -172,13 +173,17 @@ export class TabTool extends BaseTool {
   private async createTab(request: TabToolRequest): Promise<TabToolResponse> {
     const createProperties: chrome.tabs.CreateProperties = {
       url: request.url || 'about:blank',
-      active: request.properties?.active ?? true,
+      active: request.properties?.active ?? false,
       pinned: request.properties?.pinned ?? false,
       windowId: request.properties?.windowId,
     };
 
     try {
       const tab = await chrome.tabs.create(createProperties);
+
+      // Add tab to BrowserX group
+      const tabGroupManager = TabGroupManager.getInstance();
+      await tabGroupManager.addTabToGroup(tab.id!);
 
       // Wait for tab to load if URL was provided
       if (request.url && request.url !== 'about:blank') {

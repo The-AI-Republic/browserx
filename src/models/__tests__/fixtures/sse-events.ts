@@ -1,6 +1,6 @@
 /**
  * SSE Event Fixtures
- * Ported from codex-rs/core/src/client.rs:1006-1085
+ * Ported from browserx-rs/core/src/client.rs:1006-1085
  *
  * These fixtures match the Rust test fixtures for SSE event processing
  * and are used to validate that TypeScript SSE parsing matches Rust behavior.

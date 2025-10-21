@@ -2,8 +2,8 @@
  * TypeScript type definitions for RolloutRecorder
  * Preserves exact names and structures from Rust implementation
  *
- * Source: codex-rs/core/src/rollout/ and codex-rs/protocol/src/protocol.rs
- * Target: codex-chrome/src/storage/rollout/
+ * Source: browserx-rs/core/src/rollout/ and browserx-rs/protocol/src/protocol.rs
+ * Target: browserx-chrome/src/storage/rollout/
  */
 
 // ============================================================================

@@ -1,7 +1,7 @@
 /**
  * Token usage statistics matching Rust's TokenUsage struct
  *
- * Rust Reference: codex-rs/protocol/src/protocol.rs TokenUsage struct
+ * Rust Reference: browserx-rs/protocol/src/protocol.rs TokenUsage struct
  * ✅ ALIGNED: All field names use snake_case matching Rust exactly
  */
 export interface TokenUsage {

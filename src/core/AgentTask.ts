@@ -1,7 +1,7 @@
 /**
  * AgentTask - Lightweight coordinator that delegates to TaskRunner
  *
- * This class acts as a thin coordination layer between CodexAgent and TaskRunner.
+ * This class acts as a thin coordination layer between BrowserxAgent and TaskRunner.
  * The majority of task execution logic remains in TaskRunner, while AgentTask
  * provides lifecycle management and cancellation support.
  */
@@ -29,7 +29,7 @@ export interface TokenBudget {
 
 /**
  * AgentTask coordinates task execution by creating and managing its own TaskRunner
- * Implements the critical missing coordinator from codex-rs
+ * Implements the critical missing coordinator from browserx-rs
  */
 export class AgentTask {
   private taskRunner: TaskRunner;

@@ -12,7 +12,7 @@
 
 <TerminalContainer>
   <TerminalMessage type="system" content="System initialized" />
-  <TerminalMessage type="default" content="Welcome to Codex Terminal" />
+  <TerminalMessage type="default" content="Welcome to Browserx Terminal" />
   <TerminalMessage type="warning" content="Warning: Limited resources" />
   <TerminalMessage type="error" content="Error: Connection failed" />
   <TerminalMessage type="input" content="> user command" />

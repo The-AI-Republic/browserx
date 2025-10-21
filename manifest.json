@@ -1,10 +1,12 @@
 {
   "manifest_version": 3,
-  "name": "Codex For Chrome: General AI Agent for work tasks automation",
+  "name": "Browserx For Chrome: General AI Agent for work tasks automation",
   "version": "0.0.1",
-  "description": "AI-powered browser automation agent preserving codex-rs SQ/EQ architecture",
+  "description": "AI-powered browser automation agent preserving browserx-rs SQ/EQ architecture",
   "permissions": [
     "tabs",
+    "tabGroups",
+    "windows",
     "activeTab",
     "storage",
     "scripting",
@@ -23,7 +25,7 @@
     "type": "module"
   },
   "action": {
-    "default_title": "Codex Agent",
+    "default_title": "Browserx Agent",
     "default_icon": {
       "16": "static/logo_png_no_word_round_128_w_dev.png",
       "48": "static/logo_png_no_word_round_128_w_dev.png",
@@ -49,7 +51,7 @@
       "suggested_key": {
         "default": "Alt+Shift+C"
       },
-      "description": "Toggle Codex side panel"
+      "description": "Toggle Browserx side panel"
     },
     "quick-action": {
       "suggested_key": {

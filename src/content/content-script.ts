@@ -41,7 +41,7 @@ interface PageContext {
  * Initialize content script
  */
 function initialize(): void {
-  console.log('[Codex] Content script initialized');
+  console.log('[Browserx] Content script initialized');
 
   // Create message router
   router = new MessageRouter('content');
@@ -414,12 +414,12 @@ function highlightElements(
     const htmlEl = el as HTMLElement;
     
     // Store original style
-    htmlEl.setAttribute('data-codex-original-style', htmlEl.getAttribute('style') || '');
+    htmlEl.setAttribute('data-browserx-original-style', htmlEl.getAttribute('style') || '');
     
     // Apply highlight
     htmlEl.style.outline = style?.outline || '2px solid red';
     htmlEl.style.backgroundColor = style?.backgroundColor || 'rgba(255, 255, 0, 0.3)';
-    htmlEl.classList.add('codex-highlighted');
+    htmlEl.classList.add('browserx-highlighted');
     
     count++;
   });
@@ -431,22 +431,22 @@ function highlightElements(
  * Remove all highlights
  */
 function removeHighlights(): number {
-  const elements = document.querySelectorAll('.codex-highlighted');
+  const elements = document.querySelectorAll('.browserx-highlighted');
   let count = 0;
   
   elements.forEach(el => {
     const htmlEl = el as HTMLElement;
     
     // Restore original style
-    const originalStyle = htmlEl.getAttribute('data-codex-original-style');
+    const originalStyle = htmlEl.getAttribute('data-browserx-original-style');
     if (originalStyle) {
       htmlEl.setAttribute('style', originalStyle);
     } else {
       htmlEl.removeAttribute('style');
     }
     
-    htmlEl.removeAttribute('data-codex-original-style');
-    htmlEl.classList.remove('codex-highlighted');
+    htmlEl.removeAttribute('data-browserx-original-style');
+    htmlEl.classList.remove('browserx-highlighted');
     
     count++;
   });
@@ -581,7 +581,7 @@ function setupDOMObservers(): void {
   const observers: Map<string, MutationObserver> = new Map();
   
   // Store observers for cleanup
-  (window as any).__codexObservers = observers;
+  (window as any).__browserxObservers = observers;
 }
 
 /**
@@ -594,7 +594,7 @@ function observeElement(
   const element = document.querySelector(selector);
   if (!element) return false;
   
-  const observers = (window as any).__codexObservers as Map<string, MutationObserver>;
+  const observers = (window as any).__browserxObservers as Map<string, MutationObserver>;
   
   // Stop existing observer for this selector
   if (observers.has(selector)) {
@@ -657,7 +657,7 @@ function setupInteractionHandlers(): void {
   }, true);
   
   // Store for access
-  (window as any).__codexLastInteraction = () => lastInteraction;
+  (window as any).__browserxLastInteraction = () => lastInteraction;
 }
 
 /**
@@ -1040,8 +1040,8 @@ async function executeDOMTool(toolName: string, args: any): Promise<any> {
  * Inline script injection is blocked by Content Security Policy
  */
 function setupPageIsolation(args: any): boolean {
-  console.warn('[Codex] setupPageIsolation is disabled due to CSP restrictions');
-  console.warn('[Codex] Alternative: Use window.postMessage for page context communication');
+  console.warn('[Browserx] setupPageIsolation is disabled due to CSP restrictions');
+  console.warn('[Browserx] Alternative: Use window.postMessage for page context communication');
   return false;
 }
 
@@ -1088,7 +1088,7 @@ function announcePresence(): void {
  */
 function getTabId(): number | undefined {
   // This would typically be injected by the background script
-  return (window as any).__codexTabId;
+  return (window as any).__browserxTabId;
 }
 
 /**
@@ -1098,7 +1098,7 @@ function getTabId(): number | undefined {
  */
 window.addEventListener('pagehide', () => {
   // Disconnect observers
-  const observers = (window as any).__codexObservers as Map<string, MutationObserver>;
+  const observers = (window as any).__browserxObservers as Map<string, MutationObserver>;
   if (observers) {
     observers.forEach(observer => observer.disconnect());
     observers.clear();

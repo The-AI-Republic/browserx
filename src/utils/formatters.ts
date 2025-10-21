@@ -2,7 +2,7 @@
  * Formatter Utilities for Event Display
  *
  * These functions transform raw data into human-readable strings
- * for display in the UI. Ported from Rust codex-rs implementation.
+ * for display in the UI. Ported from Rust browserx-rs implementation.
  */
 
 /**

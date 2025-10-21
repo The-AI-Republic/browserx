@@ -3,7 +3,7 @@
  *
  * Utility functions for working with Prompt structures, aligned with Rust implementation.
  *
- * **Rust Reference**: `codex-rs/core/src/client_common.rs:42-68`
+ * **Rust Reference**: `browserx-rs/core/src/client_common.rs:42-68`
  */
 
 import type { Prompt, ModelFamily, ResponseItem } from './types/ResponsesAPI';
@@ -13,7 +13,7 @@ import type { Prompt, ModelFamily, ResponseItem } from './types/ResponsesAPI';
  *
  * Matches Rust's `impl Prompt::get_full_instructions(&self, model: &ModelFamily)`
  *
- * **Rust Reference**: `codex-rs/core/src/client_common.rs:42-64`
+ * **Rust Reference**: `browserx-rs/core/src/client_common.rs:42-64`
  *
  * @param prompt - The prompt containing optional instruction overrides
  * @param model - The model family configuration with base instructions
@@ -71,7 +71,7 @@ export function get_full_instructions(prompt: Prompt, model: ModelFamily): strin
  *
  * Matches Rust's `impl Prompt::get_formatted_input(&self)`
  *
- * **Rust Reference**: `codex-rs/core/src/client_common.rs:66-68`
+ * **Rust Reference**: `browserx-rs/core/src/client_common.rs:66-68`
  *
  * @param prompt - The prompt containing input items
  * @returns Cloned array of ResponseItem

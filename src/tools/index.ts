@@ -1,5 +1,5 @@
 /**
- * Tool registration and management for codex-chrome
+ * Tool registration and management for browserx-chrome
  */
 
 import { ToolRegistry } from './ToolRegistry';

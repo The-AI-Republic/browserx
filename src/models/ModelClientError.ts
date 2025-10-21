@@ -1,6 +1,6 @@
 /**
  * Extended error classes for model client error handling
- * Based on codex-rs error handling patterns and Chrome extension requirements
+ * Based on browserx-rs error handling patterns and Chrome extension requirements
  */
 
 import { ModelClientError } from './ModelClient';

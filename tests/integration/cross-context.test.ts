@@ -471,7 +471,7 @@ describe('Cross-Context Configuration Sync', () => {
     it('should handle storage conflicts during sync', async () => {
       // Mock storage conflict (version mismatch)
       mockChromeStorage.get.mockResolvedValue({
-        'codex-agent-config': {
+        'browserx-agent-config': {
           version: '1.0.0',
           model: 'claude-3-haiku-20240307',
           lastModified: Date.now() + 1000 // Newer than current

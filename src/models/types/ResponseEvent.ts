@@ -9,7 +9,7 @@ import type { ResponseItem } from '../../protocol/types';
  * This is a discriminated union matching Rust's ResponseEvent enum exactly.
  * Each variant preserves the PascalCase naming from Rust.
  *
- * **Rust Reference**: `codex-rs/core/src/client_common.rs` Lines 71-87
+ * **Rust Reference**: `browserx-rs/core/src/client_common.rs` Lines 71-87
  *
  * **Type Mapping**:
  * - Rust `enum ResponseEvent` → TypeScript discriminated union with `type` field

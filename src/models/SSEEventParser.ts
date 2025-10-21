@@ -100,7 +100,7 @@ const EVENT_TYPE_CACHE = new Map<string, boolean>([
  * them to ResponseEvent objects. The implementation matches Rust's event handling
  * logic exactly, including all 11 event type mappings.
  *
- * **Rust Reference**: `codex-rs/core/src/client.rs` Lines 624-848
+ * **Rust Reference**: `browserx-rs/core/src/client.rs` Lines 624-848
  *
  * **Event Mappings** (11 total):
  * 1. `response.created` → `{ type: 'Created' }` (line 767-770)
@@ -199,7 +199,7 @@ export class SSEEventParser {
 
   /**
    * Process a parsed SSE event and convert to ResponseEvent
-   * Mirrors the event handling logic from codex-rs/core/src/client.rs:608-738
+   * Mirrors the event handling logic from browserx-rs/core/src/client.rs:608-738
    * @param event Parsed SSE event
    * @returns ResponseEvent array (can be multiple events for some types)
    */
@@ -345,7 +345,7 @@ export class SSEEventParser {
 
   /**
    * Parse retry-after duration from error message
-   * Matches the regex pattern from codex-rs: "Please try again in (\d+(?:\.\d+)?)(s|ms)"
+   * Matches the regex pattern from browserx-rs: "Please try again in (\d+(?:\.\d+)?)(s|ms)"
    * @param error API error object
    * @returns Retry delay in milliseconds, or undefined if not found
    */

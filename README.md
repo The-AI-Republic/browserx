@@ -1,10 +1,10 @@
-# Codex for Chrome
+# Browserx for Chrome
 
 **An In-Browser AI Agent for Web Automation**
 
-Codex for Chrome is a privacy-preserving, general-purpose AI agent implemented as a Chrome extension. The agent operates entirely within the user's local browser environment, interpreting natural language commands and autonomously interacting with web pages to fulfill user requests. All large language model inference occurs client-side, ensuring that sensitive data never leaves the user's machine and eliminating the need for backend infrastructure.
+Browserx for Chrome is a privacy-preserving, general-purpose AI agent implemented as a Chrome extension. The agent operates entirely within the user's local browser environment, interpreting natural language commands and autonomously interacting with web pages to fulfill user requests. All large language model inference occurs client-side, ensuring that sensitive data never leaves the user's machine and eliminating the need for backend infrastructure.
 
-![Codex UI Screenshot](/src/static/codex_UI.png)
+![Browserx UI Screenshot](/src/static/codex_UI.png)
 
 ---
 
@@ -16,7 +16,7 @@ Codex for Chrome is a privacy-preserving, general-purpose AI agent implemented a
 
 ## Project Origin and Acknowledgments
 
-This project is derived from OpenAI's open-source Codex reference implementation, available at [github.com/openai/codex](https://github.com/openai/codex). We express our profound gratitude to the OpenAI team ([@openai](https://github.com/openai)) for releasing codex under an open-source license, which has enabled our development of this privacy-focused, browser-native AI agent implementations.
+This project is derived from OpenAI's open-source Browserx reference implementation, available at [github.com/openai/codex](https://github.com/openai/codex). We express our profound gratitude to the OpenAI team ([@openai](https://github.com/openai)) for releasing browserx under an open-source license, which has enabled our development of this privacy-focused, browser-native AI agent implementations.
 
 ---
 
@@ -24,25 +24,19 @@ This project is derived from OpenAI's open-source Codex reference implementation
 
 **Current Status:** Alpha Testing
 
-Codex for Chrome is currently in active alpha development and is intended **exclusively** for personal evaluation or internal organizational use. At this time, we **do NOT authorize** the use of this codebase to create derivative works for public distribution, including but not limited to publishing extensions to the Chrome Web Store or other browser extension marketplaces.
+Browserx for Chrome is currently in active alpha development and is intended **exclusively** for personal evaluation or internal organizational use. At this time, we also **authorize** the use of this codebase to create derivative works for public distribution, including but not limited to publishing extensions to the Chrome Web Store or other browser extension marketplaces. The public usage of the code must acknowledge the AI Republic as original owner of the source code
 
-**Important Notice:** Any unauthorized commercial redistribution or publication of extensions based on this codebase is strictly prohibited during the alpha phase.
+**Important Notice:** This software is provided "as is" without warranty of any kind. While we authorize the use of this codebase for creating derivative works and public distribution under the Apache 2.0 license terms, users should be aware that the project is in active alpha development. Use at your own risk. AI Republic and contributors are not liable for any damages, data loss, or security issues arising from the use of this software.
 
 ---
 
-## Licensing and Future Open Source Roadmap
+## Licensing
 
-We are committed to releasing this project under the **Apache License 2.0**—maintaining consistency with the upstream Codex licensing framework. This transition to a fully permissive open-source license will enable unrestricted use, modification, and distribution, including the creation and publication of derivative extensions.
+This project is now released under the **Apache License 2.0**—maintaining consistency with the upstream Browserx licensing framework. This fully permissive open-source license enables unrestricted use, modification, and distribution, including the creation and publication of derivative extensions.
 
-**Current Considerations:**
+**Trademark Considerations:**
 
-Before finalizing the Apache 2.0 license adoption, we are working to resolve potential trademark considerations regarding the "Codex" name with OpenAI. Depending on the outcome of these discussions, the project may undergo a rebranding to ensure clear distinction from OpenAI's offerings.
-
-**Potential Rebranding:**
-
-We are evaluating **BrowserX** (or **browserx**) as a candidate name for the project should rebranding become necessary. This naming convention better reflects the project's browser-centric architecture and cross-platform agent capabilities while avoiding potential trademark conflicts. The name emphasizes the extension's role as a powerful, extensible ("X") browser automation framework.
-
-**Stay tuned** for updates on licensing finalization and any naming changes through our GitHub repository and official communication channels.
+To avoid potential trademark considerations regarding the "Codex" name with OpenAI, the project has been rebranded to **BrowserX** (or **browserx**). This naming convention better reflects the project's browser-centric architecture and cross-platform agent capabilities while avoiding potential trademark conflicts. The name emphasizes the extension's role as a powerful, extensible ("X") browser automation framework.
 
 ---
 
@@ -98,7 +92,7 @@ Together, we can build a more capable and reliable browser automation agent that
 
 ## Getting Started: Local Installation
 
-Follow these steps to build and run Codex for Chrome in your local development environment:
+Follow these steps to build and run Browserx for Chrome in your local development environment:
 
 ### Prerequisites
 - Node.js (v16 or higher recommended)
@@ -179,7 +173,7 @@ We welcome collaboration from the developer community and business partners inte
 
 ### Areas of Interest
 - **Investment opportunities:** Strategic partnerships and funding discussions
-- **Enterprise adoption:** Integrating Codex for Chrome into organizational workflows
+- **Enterprise adoption:** Integrating Browserx for Chrome into organizational workflows
 - **Open-source contributions:** Code improvements, bug fixes, documentation enhancements, and feature development
 
 ### Contact Information
@@ -196,7 +190,7 @@ We look forward to building the future of in-browser AI agents together.
 
 ## License
 
-*Pending Apache License 2.0 adoption (see Licensing section above)*
+This project is licensed under the Apache License 2.0 - see the [LICENSE](LICENSE) file for details.
 
 ---
 

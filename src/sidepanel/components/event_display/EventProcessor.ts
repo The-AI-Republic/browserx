@@ -276,7 +276,7 @@ export class EventProcessor {
         category: 'error',
         timestamp: new Date(),
         title: 'STREAM ERROR',
-        content: `${msg.data.message}${msg.data.retrying ? ' (retrying...)' : ''}`,
+        content: `${msg.data.error}${msg.data.retrying ? ' (retrying...)' : ''}`,
         style: STYLE_PRESETS.error,
         status: 'error',
         collapsible: false,

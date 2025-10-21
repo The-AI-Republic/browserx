@@ -1,9 +1,9 @@
 /**
  * Chrome extension background service worker
- * Central coordinator for the Codex agent
+ * Central coordinator for the Browserx agent
  */
 
-import { CodexAgent } from '../core/CodexAgent';
+import { BrowserxAgent } from '../core/BrowserxAgent';
 import { MessageRouter, MessageType } from '../core/MessageRouter';
 import type { Submission, Event } from '../protocol/types';
 import { validateSubmission } from '../protocol/schemas';
@@ -15,7 +15,7 @@ import { registerTools } from '../tools';
 import { AgentConfig } from '../config/AgentConfig';
 
 // Global instances
-let agent: CodexAgent | null = null;
+let agent: BrowserxAgent | null = null;
 let router: MessageRouter | null = null;
 let cacheManager: CacheManager | null = null;
 let storageQuotaManager: StorageQuotaManager | null = null;
@@ -54,7 +54,7 @@ async function initialize(): Promise<void> {
  * Actual initialization logic
  */
 async function doInitialize(): Promise<void> {
-  console.log('Initializing Codex background service worker');
+  console.log('Initializing Browserx background service worker');
 
   // Initialize configuration singleton first
   agentConfig = AgentConfig.getInstance();
@@ -62,7 +62,7 @@ async function doInitialize(): Promise<void> {
   console.log('AgentConfig initialized');
 
   // Create agent instance with config (agent will initialize ModelClientFactory and ToolRegistry)
-  agent = new CodexAgent(agentConfig!);
+  agent = new BrowserxAgent(agentConfig!);
   await agent.initialize();
 
   // Create message router
@@ -213,7 +213,7 @@ function setupMessageHandlers(): void {
         await agentConfig.initialize();
       }
 
-      // Recreate CodexAgent with updated configuration
+      // Recreate BrowserxAgent with updated configuration
       if (agent) {
         // Clean up old agent
         const session = agent.getSession();
@@ -222,9 +222,9 @@ function setupMessageHandlers(): void {
       }
 
       // Create new agent with updated config
-      agent = new CodexAgent(agentConfig);
+      agent = new BrowserxAgent(agentConfig);
       await agent.initialize();
-      console.log('CodexAgent recreated with updated configuration');
+      console.log('BrowserxAgent recreated with updated configuration');
 
       // Re-initialize browser tools with new config
       await initializeBrowserTools();
@@ -318,20 +318,20 @@ function setupChromeListeners(): void {
  */
 function setupContextMenus(): void {
   chrome.contextMenus.create({
-    id: 'codex-explain',
-    title: 'Explain with Codex',
+    id: 'browserx-explain',
+    title: 'Explain with Browserx',
     contexts: ['selection'],
   });
   
   chrome.contextMenus.create({
-    id: 'codex-improve',
-    title: 'Improve with Codex',
+    id: 'browserx-improve',
+    title: 'Improve with Browserx',
     contexts: ['selection'],
   });
   
   chrome.contextMenus.create({
-    id: 'codex-extract',
-    title: 'Extract data with Codex',
+    id: 'browserx-extract',
+    title: 'Extract data with Browserx',
     contexts: ['page', 'frame'],
   });
 }
@@ -375,7 +375,7 @@ async function handleContextMenuClick(
   };
   
   switch (info.menuItemId) {
-    case 'codex-explain':
+    case 'browserx-explain':
       if (info.selectionText) {
         submission.op = {
           type: 'UserInput',
@@ -389,7 +389,7 @@ async function handleContextMenuClick(
       }
       break;
       
-    case 'codex-improve':
+    case 'browserx-improve':
       if (info.selectionText) {
         submission.op = {
           type: 'UserInput',
@@ -403,7 +403,7 @@ async function handleContextMenuClick(
       }
       break;
       
-    case 'codex-extract':
+    case 'browserx-extract':
       submission.op = {
         type: 'UserInput',
         items: [

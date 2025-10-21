@@ -1,6 +1,6 @@
 /**
  * UserNotifier - Manages user notifications in the Chrome extension
- * Port of UserNotifier from codex-rs adapted for browser context
+ * Port of UserNotifier from browserx-rs adapted for browser context
  */
 
 import type { EventMsg } from '../protocol/events';
@@ -62,7 +62,7 @@ export type ActionHandler = (notificationId: string, actionId: string) => void;
 
 /**
  * UserNotifier class - manages notifications to the user
- * Adapted from codex-rs for browser environment
+ * Adapted from browserx-rs for browser environment
  */
 export class UserNotifier {
   private notifications: Map<string, UserNotification> = new Map();

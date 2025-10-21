@@ -32,7 +32,7 @@ export class ResponseStreamError extends Error {
  * This class implements a producer-consumer pattern matching Rust's mpsc::channel behavior.
  * Events are added by the producer (API response handler) and consumed via async iteration.
  *
- * **Rust Reference**: `codex-rs/core/src/client_common.rs` Lines 149-164
+ * **Rust Reference**: `browserx-rs/core/src/client_common.rs` Lines 149-164
  *
  * **Pattern**:
  * - Producer: Calls `addEvent()` to send events → Rust: `tx_event.send(Ok(event))`

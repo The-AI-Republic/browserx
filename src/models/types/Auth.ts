@@ -1,5 +1,5 @@
 /**
- * Authentication types for codex-chrome extension
+ * Authentication types for browserx-chrome extension
  * Based on the Rust implementation for consistency
  */
 
@@ -23,9 +23,9 @@ export type PlanType =
 
 /**
  * Authentication information structure
- * Mirrors the Rust CodexAuth struct
+ * Mirrors the Rust BrowserxAuth struct
  */
-export interface CodexAuth {
+export interface BrowserxAuth {
   mode: AuthMode;
   token?: string;
   refresh_token?: string;
@@ -42,7 +42,7 @@ export interface AuthManager {
   /**
    * Get current authentication data
    */
-  auth(): Promise<CodexAuth | null>;
+  auth(): Promise<BrowserxAuth | null>;
 
   /**
    * Refresh the authentication token

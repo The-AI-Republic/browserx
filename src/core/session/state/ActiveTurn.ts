@@ -53,7 +53,7 @@ export class ActiveTurn {
 
   /**
    * Clear pending approvals and input
-   * Port of Rust's clear_pending (codex-rs/core/src/state/turn.rs:104-107)
+   * Port of Rust's clear_pending (browserx-rs/core/src/state/turn.rs:104-107)
    */
   clearPending(): void {
     this.turnState.clearPendingApprovals();

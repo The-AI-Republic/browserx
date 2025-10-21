@@ -6,7 +6,7 @@
  * - Streaming content accumulation (message and reasoning deltas)
  * - Event categorization and styling
  *
- * Ported from codex-rs/exec/src/event_processor_with_human_output.rs
+ * Ported from browserx-rs/exec/src/event_processor_with_human_output.rs
  */
 
 import type { Event } from '../../../protocol/types';
@@ -227,7 +227,7 @@ export class EventProcessor {
         id: event.id,
         category: 'message',
         timestamp: new Date(),
-        title: 'codex',
+        title: 'browserx',
         content: content,
         style: STYLE_PRESETS.agent_message,
         streaming: false,

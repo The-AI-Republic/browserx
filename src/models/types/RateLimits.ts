@@ -1,7 +1,7 @@
 /**
  * Rate limit information from API headers
  *
- * Rust Reference: codex-rs/protocol/src/protocol.rs RateLimitSnapshot struct
+ * Rust Reference: browserx-rs/protocol/src/protocol.rs RateLimitSnapshot struct
  * ✅ ALIGNED: Structure matches Rust with optional primary/secondary windows
  */
 export interface RateLimitSnapshot {
@@ -12,7 +12,7 @@ export interface RateLimitSnapshot {
 /**
  * Individual rate limit window details
  *
- * Rust Reference: codex-rs/protocol/src/protocol.rs RateLimitWindow struct
+ * Rust Reference: browserx-rs/protocol/src/protocol.rs RateLimitWindow struct
  * ✅ ALIGNED: All fields use snake_case matching Rust
  */
 export interface RateLimitWindow {

@@ -1,6 +1,6 @@
 /**
  * Comprehensive tests for OpenAIResponsesClient
- * Based on codex-rs SSE parser tests and client functionality
+ * Based on browserx-rs SSE parser tests and client functionality
  */
 
 import { describe, expect, it, beforeEach, vi, afterEach } from 'vitest';
@@ -302,7 +302,7 @@ describe('OpenAIResponsesClient', () => {
           type: 'json_schema',
           strict: true,
           schema: { type: 'object', properties: { answer: { type: 'string' } } },
-          name: 'codex_output_schema',
+          name: 'browserx_output_schema',
         },
       });
     });
@@ -322,8 +322,8 @@ describe('OpenAIResponsesClient', () => {
         status: 200,
         headers: {
           'Content-Type': 'text/event-stream',
-          'x-codex-primary-used-percent': '25.5',
-          'x-codex-primary-window-minutes': '60',
+          'x-browserx-primary-used-percent': '25.5',
+          'x-browserx-primary-window-minutes': '60',
         },
       });
     };
@@ -493,11 +493,11 @@ describe('OpenAIResponsesClient', () => {
           status: 200,
           headers: {
             'Content-Type': 'text/event-stream',
-            'x-codex-primary-used-percent': '75.5',
-            'x-codex-primary-window-minutes': '60',
-            'x-codex-primary-reset-after-seconds': '3600',
-            'x-codex-secondary-used-percent': '25.0',
-            'x-codex-secondary-window-minutes': '1440',
+            'x-browserx-primary-used-percent': '75.5',
+            'x-browserx-primary-window-minutes': '60',
+            'x-browserx-primary-reset-after-seconds': '3600',
+            'x-browserx-secondary-used-percent': '25.0',
+            'x-browserx-secondary-window-minutes': '1440',
           },
         }
       );

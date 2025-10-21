@@ -1,5 +1,5 @@
 /**
- * Event types ported from codex-rs/protocol/src/protocol.rs
+ * Event types ported from browserx-rs/protocol/src/protocol.rs
  * Preserving exact event names and structures
  */
 

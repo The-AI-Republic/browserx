@@ -1,6 +1,6 @@
-# Codex Web Tool Test
+# Browserx Web Tool Test
 
-A standalone Chrome extension for manually testing Codex browser tools without running the full AI agent.
+A standalone Chrome extension for manually testing Browserx browser tools without running the full AI agent.
 
 ## Features
 
@@ -13,7 +13,7 @@ A standalone Chrome extension for manually testing Codex browser tools without r
 
 ## Building
 
-From the `codex-chrome` directory:
+From the `browserx-chrome` directory:
 
 ```bash
 npm run build:testtool
@@ -99,7 +99,7 @@ tests/tools/e2e/
 
 ## Development
 
-The test tool reuses production code from the parent `codex-chrome` directory:
+The test tool reuses production code from the parent `browserx-chrome` directory:
 
 - `@tools/ToolRegistry`: Tool management and execution
 - `@tools/index`: Tool registration logic
@@ -111,7 +111,7 @@ This ensures the test environment matches production behavior.
 
 - Chrome 114+ (for Side Panel API)
 - Node.js and npm (for building)
-- Parent `codex-chrome` codebase (for tool implementations)
+- Parent `browserx-chrome` codebase (for tool implementations)
 
 ## Troubleshooting
 
@@ -139,6 +139,6 @@ This ensures the test environment matches production behavior.
 
 ## Related Documentation
 
-- Feature Spec: `specs/034-codex-web-tool-test/spec.md`
-- Implementation Plan: `specs/034-codex-web-tool-test/plan.md`
-- Tasks: `specs/034-codex-web-tool-test/tasks.md`
+- Feature Spec: `specs/034-browserx-web-tool-test/spec.md`
+- Implementation Plan: `specs/034-browserx-web-tool-test/plan.md`
+- Tasks: `specs/034-browserx-web-tool-test/tasks.md`

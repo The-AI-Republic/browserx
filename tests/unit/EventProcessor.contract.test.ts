@@ -29,7 +29,7 @@ describe('EventProcessor Contract Tests', () => {
 
     expect(result).not.toBeNull();
     expect(result?.category).toBe('message');
-    expect(result?.title).toBe('codex');
+    expect(result?.title).toBe('browserx');
     expect(result?.content).toBe('Test message');
   });
 

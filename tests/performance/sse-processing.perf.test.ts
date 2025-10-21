@@ -5,7 +5,7 @@
  * - Average time < 10ms per event
  * - No memory leaks from event accumulation
  *
- * Rust Reference: codex-rs/core/src/client.rs lines 637-860
+ * Rust Reference: browserx-rs/core/src/client.rs lines 637-860
  */
 
 import { describe, it, expect } from 'vitest';

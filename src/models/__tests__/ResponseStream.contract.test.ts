@@ -1,7 +1,7 @@
 /**
  * ResponseStream Contract Tests
  * Reference: contracts/ResponseStream.contract.md
- * Rust Reference: codex-rs/core/src/client_common.rs:149-164
+ * Rust Reference: browserx-rs/core/src/client_common.rs:149-164
  *
  * These tests verify that the TypeScript ResponseStream implementation
  * matches the Rust channel-based streaming pattern.

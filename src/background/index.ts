@@ -4,7 +4,7 @@
  */
 
 export * from './service-worker';
-export { CodexAgent } from '../core/CodexAgent';
+export { BrowserxAgent } from '../core/BrowserxAgent';
 export { MessageRouter, MessageType } from '../core/MessageRouter';
 export { ModelClientFactory } from '../models/ModelClientFactory';
 export { ToolRegistry } from '../tools/ToolRegistry';

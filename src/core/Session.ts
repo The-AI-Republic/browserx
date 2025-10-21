@@ -1,5 +1,5 @@
 /**
- * Session management class - port of Session struct from codex.rs
+ * Session management class - port of Session struct from browserx.rs
  * Manages conversation state, turn context, and history
  *
  * REFACTORED: Now uses SessionState, SessionServices, and ActiveTurn for better organization
@@ -46,7 +46,7 @@ export class Session {
   private messageCount: number = 0;
   private eventEmitter: ((event: Event) => Promise<void>) | null = null;
   private isPersistent: boolean = true;
-  private toolRegistry: ToolRegistry | null = null; // Tool registry from CodexAgent
+  private toolRegistry: ToolRegistry | null = null; // Tool registry from BrowserxAgent
 
   // Runtime state (not persisted, lives in Session only)
   private toolUsageStats: Map<string, number> = new Map();
@@ -75,7 +75,7 @@ export class Session {
 
     // Initialize session state
     this.sessionState = new SessionState(); // Pure data state
-    this.toolRegistry = toolRegistry ?? null; // Tool registry from CodexAgent
+    this.toolRegistry = toolRegistry ?? null; // Tool registry from BrowserxAgent
 
     // Initialize services (merged from initialize() method)
     if (services) {
@@ -795,7 +795,7 @@ export class Session {
   }
 
   /**
-   * Set tool registry (called by CodexAgent)
+   * Set tool registry (called by BrowserxAgent)
    */
   setToolRegistry(toolRegistry: ToolRegistry): void {
     this.toolRegistry = toolRegistry;
@@ -803,7 +803,7 @@ export class Session {
 
   /**
    * Initialize session with RolloutRecorder (replaces ConversationStore)
-   * T023: Follows codex-rs pattern from research.md
+   * T023: Follows browserx-rs pattern from research.md
    */
   async initializeSession(
     mode: 'create' | 'resume',
@@ -889,7 +889,7 @@ export class Session {
   }
 
   // ========================================================================
-  // NEW METHODS: Browser-Compatible Session Methods from codex-rs
+  // NEW METHODS: Browser-Compatible Session Methods from browserx-rs
   // ========================================================================
 
   /**
@@ -1064,7 +1064,7 @@ export class Session {
    */
   /**
    * Take all running tasks and clear the active turn
-   * Port of Rust's take_all_running_tasks (codex-rs/core/src/tasks/mod.rs:128-138)
+   * Port of Rust's take_all_running_tasks (browserx-rs/core/src/tasks/mod.rs:128-138)
    *
    * @returns Map of all running tasks (submission ID -> RunningTask)
    * @private
@@ -1089,7 +1089,7 @@ export class Session {
 
   /**
    * Handle individual task abortion
-   * Port of Rust's handle_task_abort (codex-rs/core/src/tasks/mod.rs:140-162)
+   * Port of Rust's handle_task_abort (browserx-rs/core/src/tasks/mod.rs:140-162)
    *
    * @param subId Submission ID of the task to abort
    * @param task RunningTask to abort
@@ -1132,7 +1132,7 @@ export class Session {
 
   /**
    * Abort all running tasks
-   * Port of Rust's abort_all_tasks (codex-rs/core/src/tasks/mod.rs:96-100)
+   * Port of Rust's abort_all_tasks (browserx-rs/core/src/tasks/mod.rs:96-100)
    *
    * Takes all running tasks and aborts each one with the specified reason.
    *
@@ -1163,7 +1163,7 @@ export class Session {
    */
   /**
    * Handle task completion
-   * Port of Rust's on_task_finished (codex-rs/core/src/tasks/mod.rs:102-119)
+   * Port of Rust's on_task_finished (browserx-rs/core/src/tasks/mod.rs:102-119)
    *
    * @param subId Submission ID of the completed task
    * @param lastAgentMessage Final assistant message (or null)
@@ -1227,7 +1227,7 @@ export class Session {
     };
 
     // Register as new active task (creates new ActiveTurn and adds task)
-    // Matches Rust pattern: codex-rs/core/src/tasks/mod.rs:93
+    // Matches Rust pattern: browserx-rs/core/src/tasks/mod.rs:93
     this.registerNewActiveTask(subId, runningTask);
 
     // Execute asynchronously (fire-and-forget, don't await)
@@ -1320,7 +1320,7 @@ export class Session {
     // Record to SessionState history
     this.recordConversationItemsDual(responseItems);
 
-    // Derive user message events using event mapping (matches Rust logic in codex.rs line 794-805)
+    // Derive user message events using event mapping (matches Rust logic in browserx.rs line 794-805)
     // This ensures proper handling of user_instructions and environment_context tags
     if (this.services?.rollout && responseItems.length > 0) {
       const showRawReasoning = false; // User messages don't have reasoning
@@ -1548,7 +1548,7 @@ export class Session {
 
   /**
    * Register a new active task
-   * Port of Rust's register_new_active_task (codex-rs/core/src/tasks/mod.rs:121-126)
+   * Port of Rust's register_new_active_task (browserx-rs/core/src/tasks/mod.rs:121-126)
    *
    * Creates a new ActiveTurn, adds the task to it, and replaces the current active turn.
    * This effectively ensures only one turn can be active at a time.

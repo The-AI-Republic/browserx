@@ -3,7 +3,7 @@ import { render } from '@testing-library/svelte';
 
 // These imports will initially fail because the implementations don't exist yet
 import { AgentConfig } from '../../src/config/AgentConfig';
-import { CodexAgent } from '../../src/core/CodexAgent';
+import { BrowserxAgent } from '../../src/core/BrowserxAgent';
 import { AgentTask } from '../../src/core/AgentTask';
 import { TaskRunner } from '../../src/core/TaskRunner';
 import { useAgentConfig } from '../../src/hooks/useAgentConfig';
@@ -114,8 +114,8 @@ describe('Config Injection Integration', () => {
   });
 
   describe('Agent Component Integration', () => {
-    it('should inject config into CodexAgent components', async () => {
-      const codexAgent = new CodexAgent();
+    it('should inject config into BrowserxAgent components', async () => {
+      const codexAgent = new BrowserxAgent();
       await codexAgent.initialize();
 
       const { container } = render(MockAgentStatus, {
@@ -131,7 +131,7 @@ describe('Config Injection Integration', () => {
     });
 
     it('should update agent components when config changes', async () => {
-      const codexAgent = new CodexAgent();
+      const codexAgent = new BrowserxAgent();
       await codexAgent.initialize();
 
       // Subscribe agent to config changes
@@ -158,7 +158,7 @@ describe('Config Injection Integration', () => {
     });
 
     it('should handle agent status changes based on config', async () => {
-      const codexAgent = new CodexAgent();
+      const codexAgent = new BrowserxAgent();
       await codexAgent.initialize();
 
       const { container } = render(MockAgentStatus, {

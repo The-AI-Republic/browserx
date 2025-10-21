@@ -127,7 +127,7 @@
       {#if message.role === 'user'}
         You
       {:else if message.role === 'assistant'}
-        Codex
+        Browserx
       {:else}
         System
       {/if}

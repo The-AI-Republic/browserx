@@ -3,7 +3,7 @@ import { Session } from '../../src/core/Session';
 import { ToolRegistry } from '../../src/tools/ToolRegistry';
 import { ApprovalManager } from '../../src/core/ApprovalManager';
 import { ModelClientFactory } from '../../src/models/ModelClientFactory';
-import { CodexAgent } from '../../src/core/CodexAgent';
+import { BrowserxAgent } from '../../src/core/BrowserxAgent';
 
 describe('Backward Compatibility', () => {
   describe('Components without Config', () => {
@@ -46,9 +46,9 @@ describe('Backward Compatibility', () => {
       expect(client).toBeDefined();
     });
 
-    it('CodexAgent should work without config parameter', async () => {
+    it('BrowserxAgent should work without config parameter', async () => {
       // Old usage should still work
-      const agent = new CodexAgent();
+      const agent = new BrowserxAgent();
       expect(agent).toBeDefined();
 
       // Initialize without config
@@ -115,13 +115,13 @@ describe('Backward Compatibility', () => {
 
     it('should allow gradual migration to config-based setup', async () => {
       // Start with no config
-      const agent1 = new CodexAgent();
+      const agent1 = new BrowserxAgent();
       await agent1.initialize();
 
       // Later, use with config
       const config = (await import('../../src/config/AgentConfig')).AgentConfig.getInstance();
       await config.initialize();
-      const agent2 = new CodexAgent(config);
+      const agent2 = new BrowserxAgent(config);
       await agent2.initialize();
 
       // Both should work

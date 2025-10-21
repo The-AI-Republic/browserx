@@ -762,7 +762,7 @@ describe('Integration with ModelClient Base Class', () => {
 /**
  * T008: Error Handling and Retries Integration Tests
  * Reference: tasks.md T008
- * Rust Reference: codex-rs/core/src/client.rs:549-622
+ * Rust Reference: browserx-rs/core/src/client.rs:549-622
  *
  * These tests verify error handling and retry logic for the Responses API
  * matching Rust behavior exactly.

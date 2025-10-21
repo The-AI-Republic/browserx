@@ -64,7 +64,7 @@ describe('ConfigStorage', () => {
       await storage.saveConfig(config);
 
       expect(mockStorageSync.set).toHaveBeenCalledWith({
-        'codex-agent-config': config
+        'browserx-agent-config': config
       });
     });
 
@@ -76,12 +76,12 @@ describe('ConfigStorage', () => {
       };
 
       mockStorageSync.get.mockResolvedValue({
-        'codex-agent-config': expectedConfig
+        'browserx-agent-config': expectedConfig
       });
 
       const config = await storage.loadConfig();
 
-      expect(mockStorageSync.get).toHaveBeenCalledWith('codex-agent-config');
+      expect(mockStorageSync.get).toHaveBeenCalledWith('browserx-agent-config');
       expect(config).toEqual(expectedConfig);
     });
 
@@ -114,7 +114,7 @@ describe('ConfigStorage', () => {
       };
 
       mockStorageSync.get.mockResolvedValue({
-        'codex-agent-config': invalidConfig
+        'browserx-agent-config': invalidConfig
       });
 
       const consoleSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
@@ -158,7 +158,7 @@ describe('ConfigStorage', () => {
       await storage.saveProfiles(profiles);
 
       expect(mockStorageLocal.set).toHaveBeenCalledWith({
-        'codex-config-profiles': profiles
+        'browserx-config-profiles': profiles
       });
     });
 
@@ -177,12 +177,12 @@ describe('ConfigStorage', () => {
       };
 
       mockStorageLocal.get.mockResolvedValue({
-        'codex-config-profiles': profiles
+        'browserx-config-profiles': profiles
       });
 
       const loadedProfiles = await storage.loadProfiles();
 
-      expect(mockStorageLocal.get).toHaveBeenCalledWith('codex-config-profiles');
+      expect(mockStorageLocal.get).toHaveBeenCalledWith('browserx-config-profiles');
       expect(loadedProfiles).toEqual(profiles);
     });
 
@@ -202,18 +202,18 @@ describe('ConfigStorage', () => {
       await storage.saveActiveProfile('development');
 
       expect(mockStorageLocal.set).toHaveBeenCalledWith({
-        'codex-active-profile': 'development'
+        'browserx-active-profile': 'development'
       });
     });
 
     it('should load active profile selection', async () => {
       mockStorageLocal.get.mockResolvedValue({
-        'codex-active-profile': 'development'
+        'browserx-active-profile': 'development'
       });
 
       const activeProfile = await storage.loadActiveProfile();
 
-      expect(mockStorageLocal.get).toHaveBeenCalledWith('codex-active-profile');
+      expect(mockStorageLocal.get).toHaveBeenCalledWith('browserx-active-profile');
       expect(activeProfile).toBe('development');
     });
 
@@ -249,7 +249,7 @@ describe('ConfigStorage', () => {
 
       // Simulate storage change
       const changes = {
-        'codex-agent-config': {
+        'browserx-agent-config': {
           newValue: {
             model: 'claude-3-haiku-20240307',
             approval_policy: 'never'
@@ -263,7 +263,7 @@ describe('ConfigStorage', () => {
 
       storageListener!(changes, 'sync');
 
-      expect(callback).toHaveBeenCalledWith(changes['codex-agent-config'].newValue);
+      expect(callback).toHaveBeenCalledWith(changes['browserx-agent-config'].newValue);
     });
 
     it('should not notify for non-config storage changes', async () => {
@@ -361,7 +361,7 @@ describe('ConfigStorage', () => {
       };
 
       mockStorageSync.get.mockResolvedValue({
-        'codex-agent-config': oldConfig
+        'browserx-agent-config': oldConfig
       });
 
       const config = await storage.loadConfig();
@@ -382,7 +382,7 @@ describe('ConfigStorage', () => {
       };
 
       mockStorageSync.get.mockResolvedValue({
-        'codex-agent-config': configWithVersion
+        'browserx-agent-config': configWithVersion
       });
 
       const config = await storage.loadConfig();
@@ -394,7 +394,7 @@ describe('ConfigStorage', () => {
       const corruptedData = 'invalid-json-string';
 
       mockStorageSync.get.mockResolvedValue({
-        'codex-agent-config': corruptedData
+        'browserx-agent-config': corruptedData
       });
 
       mockStorageSync.remove.mockResolvedValue(undefined);
@@ -404,7 +404,7 @@ describe('ConfigStorage', () => {
       const config = await storage.loadConfig();
 
       expect(config).toEqual(storage.getDefaultConfig());
-      expect(mockStorageSync.remove).toHaveBeenCalledWith('codex-agent-config');
+      expect(mockStorageSync.remove).toHaveBeenCalledWith('browserx-agent-config');
 
       consoleSpy.mockRestore();
     });

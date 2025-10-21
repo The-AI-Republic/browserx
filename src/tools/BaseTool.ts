@@ -7,7 +7,7 @@
 
 /**
  * JSON Schema definition for tool parameters
- * Port of JsonSchema enum from codex-rs/core/src/openai_tools.rs
+ * Port of JsonSchema enum from browserx-rs/core/src/openai_tools.rs
  */
 export type JsonSchema =
   | { type: 'boolean'; description?: string }
@@ -19,7 +19,7 @@ export type JsonSchema =
 
 /**
  * Response API tool definition
- * Port of ResponsesApiTool from codex-rs/core/src/openai_tools.rs
+ * Port of ResponsesApiTool from browserx-rs/core/src/openai_tools.rs
  */
 export interface ResponsesApiTool {
   name: string;
@@ -30,7 +30,7 @@ export interface ResponsesApiTool {
 
 /**
  * Freeform tool format
- * Port of FreeformToolFormat from codex-rs/core/src/openai_tools.rs
+ * Port of FreeformToolFormat from browserx-rs/core/src/openai_tools.rs
  */
 export interface FreeformToolFormat {
   type: string;
@@ -40,7 +40,7 @@ export interface FreeformToolFormat {
 
 /**
  * Freeform tool definition
- * Port of FreeformTool from codex-rs/core/src/openai_tools.rs
+ * Port of FreeformTool from browserx-rs/core/src/openai_tools.rs
  */
 export interface FreeformTool {
   name: string;
@@ -50,7 +50,7 @@ export interface FreeformTool {
 
 /**
  * Tool definition - union type matching OpenAiTool enum from Rust
- * Port of OpenAiTool enum from codex-rs/core/src/openai_tools.rs
+ * Port of OpenAiTool enum from browserx-rs/core/src/openai_tools.rs
  *
  * When serialized as JSON, this produces a valid "Tool" in the OpenAI Responses API.
  */

@@ -62,15 +62,15 @@
 <button
   bind:this={buttonElement}
   type="button"
-  class="w-full px-4 py-3 text-left transition-colors border-l-2"
-  class:bg-gray-700/50={isSelected}
+  class="w-full px-4 py-3 text-left transition-colors border-l-2
+    {isSelected ? 'bg-gray-700/50' : ''}
+    {!isSelected && !hasErrors ? 'hover:bg-gray-800/50' : ''}
+    {model.deprecated ? 'border-yellow-500/50' : ''}"
   class:ring-1={isSelected}
   class:ring-cyan-400={isSelected}
   class:border-cyan-400={isSelected}
   class:bg-gray-750={isFocused && !isSelected}
-  class:hover:bg-gray-800/50={!isSelected && !hasErrors}
   class:border-transparent={!isSelected && !model.deprecated}
-  class:border-yellow-500/50={model.deprecated}
   class:opacity-50={hasErrors}
   class:cursor-not-allowed={hasErrors}
   class:grayscale={hasErrors}

@@ -7,8 +7,8 @@ This document describes the refactoring of authentication configuration manageme
 ## Motivation
 
 Previously, authentication data was stored across multiple storage keys:
-- `codex_auth_data` - Auth mode, account ID, plan type
-- `codex_api_key_encrypted` - Encrypted API key
+- `browserx_auth_data` - Auth mode, account ID, plan type
+- `browserx_api_key_encrypted` - Encrypted API key
 
 This scattered approach made it difficult to:
 - Maintain consistency across the codebase
@@ -72,7 +72,7 @@ All configuration is now stored under a single key: `agent_config` in `chrome.st
 **Added:**
 - `DEFAULT_AUTH_CONFIG` constant
 - Updated `DEFAULT_AGENT_CONFIG` to include auth
-- Changed `STORAGE_KEYS.CONFIG` from `'codex_config_v1'` to `'agent_config'`
+- Changed `STORAGE_KEYS.CONFIG` from `'browserx_config_v1'` to `'agent_config'`
 
 **Modified:**
 - `mergeWithDefaults()` function to handle auth property

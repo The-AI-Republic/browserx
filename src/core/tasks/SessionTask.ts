@@ -1,8 +1,8 @@
 /**
  * SessionTask Interface
  *
- * Matches Rust SessionTask trait from codex-rs/core/src/tasks/mod.rs
- * Defines the contract for task execution in the CodexAgent system.
+ * Matches Rust SessionTask trait from browserx-rs/core/src/tasks/mod.rs
+ * Defines the contract for task execution in the BrowserxAgent system.
  */
 
 import type { Session } from '../Session';

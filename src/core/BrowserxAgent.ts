@@ -1,5 +1,5 @@
 /**
- * Main Codex agent class - port of codex.rs Codex struct
+ * Main Browserx agent class - port of browserx.rs Browserx struct
  * Preserves the SQ/EQ (Submission Queue/Event Queue) architecture
  */
 
@@ -22,7 +22,7 @@ import { RegularTask } from './tasks/RegularTask';
  * Main agent class managing the submission and event queues
  * Enhanced with AgentTask integration for coordinated task execution
  */
-export class CodexAgent {
+export class BrowserxAgent {
   private nextId: number = 1;
   private submissionQueue: Submission[] = [];
   private eventQueue: Event[] = [];
@@ -48,7 +48,7 @@ export class CodexAgent {
 
     // Initialize session with config and toolRegistry
     this.session = new Session(this.config, true, undefined, this.toolRegistry);
-    // Wire up session event emitter to CodexAgent's event queue
+    // Wire up session event emitter to BrowserxAgent's event queue
     this.session.setEventEmitter(async (event: Event) => this.emitEvent(event.msg));
 
     // Setup event processing for notifications
@@ -675,6 +675,7 @@ export class CodexAgent {
    * Cleanup resources
    */
   async cleanup(): Promise<void> {
+    await this.toolRegistry.cleanup();
     this.toolRegistry.clear();
     this.submissionQueue = [];
     this.eventQueue = [];

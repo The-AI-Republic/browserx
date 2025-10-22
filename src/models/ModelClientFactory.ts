@@ -1,5 +1,5 @@
 /**
- * Model Client Factory for codex-chrome
+ * Model Client Factory for browserx-chrome
  * Creates and manages model client instances with provider selection and caching
  */
 
@@ -10,7 +10,7 @@ import type { AgentConfig } from '../config/AgentConfig';
 
 /**
  * Supported model providers
- * Note: Anthropic removed - not supported in Rust codex-rs implementation
+ * Note: Anthropic removed - not supported in Rust browserx-rs implementation
  */
 export type ModelProvider = 'openai';
 
@@ -42,7 +42,7 @@ const STORAGE_KEYS = {
 
 /**
  * Model name to provider mapping
- * Note: Only OpenAI models supported (matching Rust codex-rs implementation)
+ * Note: Only OpenAI models supported (matching Rust browserx-rs implementation)
  */
 const MODEL_PROVIDER_MAP: Record<string, ModelProvider> = {
   // OpenAI models
@@ -87,8 +87,8 @@ export class ModelClientFactory {
       // Check if any API key related storage changed
       const relevantKeys = [
         STORAGE_KEYS.OPENAI_API_KEY,
-        'codex_api_key_encrypted', // ChromeAuthManager encrypted key
-        'codex_auth_data', // ChromeAuthManager auth data
+        'browserx_api_key_encrypted', // ChromeAuthManager encrypted key
+        'browserx_auth_data', // ChromeAuthManager auth data
       ];
 
       for (const key of relevantKeys) {
@@ -376,7 +376,7 @@ export class ModelClientFactory {
     switch (config.provider) {
       case 'openai':
         // Use the experimental OpenAI Responses API client by default
-        // Construct minimal provider and model family configs aligned with codex-rs
+        // Construct minimal provider and model family configs aligned with browserx-rs
         const baseUrl = config.options?.baseUrl;
         const organization = config.options?.organization;
 

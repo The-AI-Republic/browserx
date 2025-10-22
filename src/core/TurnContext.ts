@@ -1,5 +1,5 @@
 /**
- * TurnContext implementation - ports TurnContext struct from codex-rs
+ * TurnContext implementation - ports TurnContext struct from browserx-rs
  * Manages turn state, context switching, approval policies, and sandbox settings
  */
 
@@ -43,7 +43,7 @@ export interface TurnContextConfig {
 
 /**
  * TurnContext manages the context and configuration for a single conversation turn
- * Port of TurnContext struct from codex-rs/core/src/codex.rs
+ * Port of TurnContext struct from browserx-rs/core/src/browserx.rs
  */
 export class TurnContext {
   private modelClient: ModelClient;

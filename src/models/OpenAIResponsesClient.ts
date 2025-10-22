@@ -1,7 +1,7 @@
 /**
- * OpenAI Responses API client implementation for codex-chrome
+ * OpenAI Responses API client implementation for browserx-chrome
  * Implements the experimental /v1/responses endpoint with SSE streaming
- * Based on codex-rs/core/src/client.rs implementation
+ * Based on browserx-rs/core/src/client.rs implementation
  */
 
 import {
@@ -205,7 +205,7 @@ export class OpenAIResponsesClient extends ModelClient {
    * objects as the model generates its response. The stream is returned immediately,
    * with events being added asynchronously as they arrive from the API.
    *
-   * **Rust Reference**: `codex-rs/core/src/client.rs` Line 124
+   * **Rust Reference**: `browserx-rs/core/src/client.rs` Line 124
    *
    * @param prompt The prompt containing input messages and tools
    * @returns Promise resolving to ResponseStream that yields ResponseEvent objects
@@ -300,7 +300,7 @@ export class OpenAIResponsesClient extends ModelClient {
 
   /**
    * Stream responses from the model using appropriate wire API
-   * Rust Reference: codex-rs/core/src/client.rs Lines 121-134
+   * Rust Reference: browserx-rs/core/src/client.rs Lines 121-134
    */
   protected async *streamResponses(request: CompletionRequest): AsyncGenerator<ResponseEvent> {
     // Convert CompletionRequest to Prompt
@@ -318,7 +318,7 @@ export class OpenAIResponsesClient extends ModelClient {
 
   /**
    * Chat completions streaming (not supported by Responses API)
-   * Rust Reference: codex-rs/core/src/client.rs Lines 177-195
+   * Rust Reference: browserx-rs/core/src/client.rs Lines 177-195
    */
   protected async *streamChat(request: CompletionRequest): AsyncGenerator<ResponseEvent> {
     throw new ModelClientError('Chat completions not supported by Responses API - use OpenAIClient instead');
@@ -331,7 +331,7 @@ export class OpenAIResponsesClient extends ModelClient {
    * It makes the HTTP request synchronously (throwing on connection errors),
    * then returns a ResponseStream that will be populated asynchronously.
    *
-   * **Rust Reference**: `codex-rs/core/src/client.rs` Line 269
+   * **Rust Reference**: `browserx-rs/core/src/client.rs` Line 269
    *
    * @param attempt The attempt number (0-based) for logging/metrics
    * @param payload The API request payload
@@ -456,7 +456,7 @@ export class OpenAIResponsesClient extends ModelClient {
    * provided ResponseStream. It matches the Rust implementation's event processing
    * logic exactly.
    *
-   * **Rust Reference**: `codex-rs/core/src/client.rs` Lines 488-550
+   * **Rust Reference**: `browserx-rs/core/src/client.rs` Lines 488-550
    *
    * @param body ReadableStream from fetch response
    * @param headers HTTP response headers
@@ -552,7 +552,7 @@ export class OpenAIResponsesClient extends ModelClient {
    * This is kept for backward compatibility with streamResponsesInternal().
    * New code should use processSSEToStream() instead.
    *
-   * Rust Reference: codex-rs/core/src/client.rs Lines 488-550
+   * Rust Reference: browserx-rs/core/src/client.rs Lines 488-550
    */
   protected async *processSSE(
     stream: ReadableStream<Uint8Array>,
@@ -879,7 +879,7 @@ export class OpenAIResponsesClient extends ModelClient {
         type: 'json_schema',
         strict: true,
         schema: outputSchema,
-        name: 'codex_output_schema',
+        name: 'browserx_output_schema',
       };
     }
 
@@ -891,22 +891,22 @@ export class OpenAIResponsesClient extends ModelClient {
    */
   /**
    * Parse rate limit snapshot from HTTP headers
-   * Rust Reference: codex-rs/core/src/client.rs Lines 552-590
+   * Rust Reference: browserx-rs/core/src/client.rs Lines 552-590
    */
   protected parseRateLimitSnapshot(headers?: Headers): RateLimitSnapshot | undefined {
     if (!headers) return undefined;
     const primary = this.parseRateLimitWindow(
       headers,
-      'x-codex-primary-used-percent',
-      'x-codex-primary-window-minutes',
-      'x-codex-primary-resets-in-seconds'
+      'x-browserx-primary-used-percent',
+      'x-browserx-primary-window-minutes',
+      'x-browserx-primary-resets-in-seconds'
     );
 
     const secondary = this.parseRateLimitWindow(
       headers,
-      'x-codex-secondary-used-percent',
-      'x-codex-secondary-window-minutes',
-      'x-codex-secondary-resets-in-seconds'
+      'x-browserx-secondary-used-percent',
+      'x-browserx-secondary-window-minutes',
+      'x-browserx-secondary-resets-in-seconds'
     );
 
     if (!primary && !secondary) {

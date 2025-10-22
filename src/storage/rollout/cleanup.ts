@@ -9,7 +9,7 @@ import { createDatabaseError } from './helpers';
 // Constants
 // ============================================================================
 
-const DB_NAME = 'CodexRollouts';
+const DB_NAME = 'BrowserxRollouts';
 const STORE_ROLLOUTS = 'rollouts';
 const STORE_ROLLOUT_ITEMS = 'rollout_items';
 

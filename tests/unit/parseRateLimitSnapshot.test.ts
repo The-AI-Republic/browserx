@@ -2,7 +2,7 @@
  * Unit Tests: parseRateLimitSnapshot()
  *
  * Tests the rate limit header parsing logic in OpenAIResponsesClient
- * Rust Reference: codex-rs/core/src/client.rs lines 580-619
+ * Rust Reference: browserx-rs/core/src/client.rs lines 580-619
  */
 
 import { describe, it, expect } from 'vitest';
@@ -38,9 +38,9 @@ describe('parseRateLimitSnapshot', () => {
     it('should parse primary rate limit window from headers', () => {
       const client = createTestClient();
       const headers = new Headers();
-      headers.set('x-codex-primary-used-percent', '75.5');
-      headers.set('x-codex-primary-window-minutes', '60');
-      headers.set('x-codex-primary-resets-in-seconds', '1800');
+      headers.set('x-browserx-primary-used-percent', '75.5');
+      headers.set('x-browserx-primary-window-minutes', '60');
+      headers.set('x-browserx-primary-resets-in-seconds', '1800');
 
       const snapshot = (client as any).parseRateLimitSnapshot(headers);
 
@@ -55,7 +55,7 @@ describe('parseRateLimitSnapshot', () => {
     it('should handle primary window without optional fields', () => {
       const client = createTestClient();
       const headers = new Headers();
-      headers.set('x-codex-primary-used-percent', '50.0');
+      headers.set('x-browserx-primary-used-percent', '50.0');
 
       const snapshot = (client as any).parseRateLimitSnapshot(headers);
 
@@ -71,9 +71,9 @@ describe('parseRateLimitSnapshot', () => {
     it('should parse secondary rate limit window from headers', () => {
       const client = createTestClient();
       const headers = new Headers();
-      headers.set('x-codex-secondary-used-percent', '25.0');
-      headers.set('x-codex-secondary-window-minutes', '1440');
-      headers.set('x-codex-secondary-resets-in-seconds', '86400');
+      headers.set('x-browserx-secondary-used-percent', '25.0');
+      headers.set('x-browserx-secondary-window-minutes', '1440');
+      headers.set('x-browserx-secondary-resets-in-seconds', '86400');
 
       const snapshot = (client as any).parseRateLimitSnapshot(headers);
 
@@ -90,12 +90,12 @@ describe('parseRateLimitSnapshot', () => {
     it('should parse both primary and secondary rate limit windows', () => {
       const client = createTestClient();
       const headers = new Headers();
-      headers.set('x-codex-primary-used-percent', '75.5');
-      headers.set('x-codex-primary-window-minutes', '60');
-      headers.set('x-codex-primary-resets-in-seconds', '1800');
-      headers.set('x-codex-secondary-used-percent', '25.0');
-      headers.set('x-codex-secondary-window-minutes', '1440');
-      headers.set('x-codex-secondary-resets-in-seconds', '86400');
+      headers.set('x-browserx-primary-used-percent', '75.5');
+      headers.set('x-browserx-primary-window-minutes', '60');
+      headers.set('x-browserx-primary-resets-in-seconds', '1800');
+      headers.set('x-browserx-secondary-used-percent', '25.0');
+      headers.set('x-browserx-secondary-window-minutes', '1440');
+      headers.set('x-browserx-secondary-resets-in-seconds', '86400');
 
       const snapshot = (client as any).parseRateLimitSnapshot(headers);
 
@@ -145,7 +145,7 @@ describe('parseRateLimitSnapshot', () => {
     it('should handle invalid numeric values gracefully', () => {
       const client = createTestClient();
       const headers = new Headers();
-      headers.set('x-codex-primary-used-percent', 'invalid');
+      headers.set('x-browserx-primary-used-percent', 'invalid');
 
       const snapshot = (client as any).parseRateLimitSnapshot(headers);
 
@@ -157,7 +157,7 @@ describe('parseRateLimitSnapshot', () => {
     it('should handle negative values', () => {
       const client = createTestClient();
       const headers = new Headers();
-      headers.set('x-codex-primary-used-percent', '-10');
+      headers.set('x-browserx-primary-used-percent', '-10');
 
       const snapshot = (client as any).parseRateLimitSnapshot(headers);
 
@@ -168,7 +168,7 @@ describe('parseRateLimitSnapshot', () => {
     it('should handle values exceeding 100%', () => {
       const client = createTestClient();
       const headers = new Headers();
-      headers.set('x-codex-primary-used-percent', '150.0');
+      headers.set('x-browserx-primary-used-percent', '150.0');
 
       const snapshot = (client as any).parseRateLimitSnapshot(headers);
 
@@ -184,7 +184,7 @@ describe('parseRateLimitSnapshot', () => {
     it('should handle zero percent used', () => {
       const client = createTestClient();
       const headers = new Headers();
-      headers.set('x-codex-primary-used-percent', '0.0');
+      headers.set('x-browserx-primary-used-percent', '0.0');
 
       const snapshot = (client as any).parseRateLimitSnapshot(headers);
 
@@ -195,7 +195,7 @@ describe('parseRateLimitSnapshot', () => {
     it('should handle 100 percent used', () => {
       const client = createTestClient();
       const headers = new Headers();
-      headers.set('x-codex-primary-used-percent', '100.0');
+      headers.set('x-browserx-primary-used-percent', '100.0');
 
       const snapshot = (client as any).parseRateLimitSnapshot(headers);
 
@@ -206,8 +206,8 @@ describe('parseRateLimitSnapshot', () => {
     it('should handle zero seconds until reset', () => {
       const client = createTestClient();
       const headers = new Headers();
-      headers.set('x-codex-primary-used-percent', '95.0');
-      headers.set('x-codex-primary-resets-in-seconds', '0');
+      headers.set('x-browserx-primary-used-percent', '95.0');
+      headers.set('x-browserx-primary-resets-in-seconds', '0');
 
       const snapshot = (client as any).parseRateLimitSnapshot(headers);
 
@@ -218,7 +218,7 @@ describe('parseRateLimitSnapshot', () => {
     it('should handle fractional percentages', () => {
       const client = createTestClient();
       const headers = new Headers();
-      headers.set('x-codex-primary-used-percent', '33.333');
+      headers.set('x-browserx-primary-used-percent', '33.333');
 
       const snapshot = (client as any).parseRateLimitSnapshot(headers);
 

@@ -10,7 +10,7 @@ export default defineConfig({
   build: {
     lib: {
       entry: resolve(__dirname, 'src/content/content-script.ts'),
-      name: 'CodexContentScript',
+      name: 'BrowserxContentScript',
       formats: ['iife'],
       fileName: () => 'content.js'
     },

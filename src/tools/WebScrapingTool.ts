@@ -6,6 +6,7 @@
  */
 
 import { BaseTool, createToolDefinition, type BaseToolRequest, type BaseToolOptions, type ToolDefinition } from './BaseTool';
+import { TabGroupManager } from './tab/TabGroupManager';
 
 /**
  * Scraping pattern configuration
@@ -302,7 +303,13 @@ export class WebScrapingTool extends BaseTool {
 
     if (url) {
       // Create new tab with URL
-      return await chrome.tabs.create({ url });
+      const tab = await chrome.tabs.create({ url, active: false });
+
+      // Add tab to BrowserX group
+      const tabGroupManager = TabGroupManager.getInstance();
+      await tabGroupManager.addTabToGroup(tab.id!);
+
+      return tab;
     }
 
     // Use active tab

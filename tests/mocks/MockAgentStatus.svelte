@@ -1,7 +1,7 @@
 <script lang="ts">
-  import type { CodexAgent } from '../../src/core/CodexAgent';
+  import type { BrowserxAgent } from '../../src/core/BrowserxAgent';
 
-  export let agent: CodexAgent;
+  export let agent: BrowserxAgent;
   export let reactive = false;
   export let showStatus = false;
 

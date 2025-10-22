@@ -1,6 +1,6 @@
 /**
  * Queue processing utilities for managing submission and event queues
- * Implements async queue patterns from codex.rs
+ * Implements async queue patterns from browserx.rs
  */
 
 import type { Submission, Event, Op } from '../protocol/types';

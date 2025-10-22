@@ -1,6 +1,6 @@
 # DOM Operations Integration Tests
 
-This directory contains comprehensive integration tests for DOM operations in the Codex Chrome Extension, implementing test scenarios T018-T022 based on the quickstart guide.
+This directory contains comprehensive integration tests for DOM operations in the Browserx Chrome Extension, implementing test scenarios T018-T022 based on the quickstart guide.
 
 ## Test Files
 

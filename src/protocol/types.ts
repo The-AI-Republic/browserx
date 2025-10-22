@@ -1,5 +1,5 @@
 /**
- * Core protocol types ported from codex-rs/protocol/src/protocol.rs
+ * Core protocol types ported from browserx-rs/protocol/src/protocol.rs
  * Preserving exact type names and structure from Rust
  */
 
@@ -8,7 +8,7 @@ export const USER_INSTRUCTIONS_OPEN_TAG = '<user_instructions>';
 export const USER_INSTRUCTIONS_CLOSE_TAG = '</user_instructions>';
 export const ENVIRONMENT_CONTEXT_OPEN_TAG = '<environment_context>';
 export const ENVIRONMENT_CONTEXT_CLOSE_TAG = '</environment_context>';
-export const USER_MESSAGE_BEGIN = '## My request for Codex:';
+export const USER_MESSAGE_BEGIN = '## My request for Browserx:';
 
 /**
  * Submission Queue Entry - requests from user
@@ -98,7 +98,7 @@ export type Op =
 
 /**
  * Determines the conditions under which the user is consulted to approve
- * running the command proposed by Codex.
+ * running the command proposed by Browserx.
  */
 export type AskForApproval =
   | 'untrusted'    // UnlessTrusted in Rust
@@ -124,7 +124,7 @@ export type SandboxPolicy =
     };
 
 /**
- * Protocol model types ported from codex-rs/protocol/src/models.rs
+ * Protocol model types ported from browserx-rs/protocol/src/models.rs
  * These types represent the structured data from API responses
  */
 

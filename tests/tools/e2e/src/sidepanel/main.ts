@@ -1,5 +1,5 @@
 /**
- * Main application controller for Codex Tool Test side panel
+ * Main application controller for Browserx Tool Test side panel
  */
 
 import { getTools, executeTool } from '../utils/messaging';

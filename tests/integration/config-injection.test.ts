@@ -3,7 +3,7 @@ import { render } from '@testing-library/svelte';
 
 // These imports will initially fail because the implementations don't exist yet
 import { AgentConfig } from '../../src/config/AgentConfig';
-import { CodexAgent } from '../../src/core/CodexAgent';
+import { BrowserxAgent } from '../../src/core/BrowserxAgent';
 import { AgentTask } from '../../src/core/AgentTask';
 import { TaskRunner } from '../../src/core/TaskRunner';
 import { useAgentConfig } from '../../src/hooks/useAgentConfig';
@@ -114,12 +114,12 @@ describe('Config Injection Integration', () => {
   });
 
   describe('Agent Component Integration', () => {
-    it('should inject config into CodexAgent components', async () => {
-      const codexAgent = new CodexAgent();
-      await codexAgent.initialize();
+    it('should inject config into BrowserxAgent components', async () => {
+      const browserxAgent = new BrowserxAgent();
+      await browserxAgent.initialize();
 
       const { container } = render(MockAgentStatus, {
-        props: { agent: codexAgent }
+        props: { agent: browserxAgent }
       });
 
       // Component should display agent configuration
@@ -131,16 +131,16 @@ describe('Config Injection Integration', () => {
     });
 
     it('should update agent components when config changes', async () => {
-      const codexAgent = new CodexAgent();
-      await codexAgent.initialize();
+      const browserxAgent = new BrowserxAgent();
+      await browserxAgent.initialize();
 
       // Subscribe agent to config changes
       agentConfig.subscribe((newConfig) => {
-        codexAgent.updateConfig(newConfig);
+        browserxAgent.updateConfig(newConfig);
       });
 
       const { container } = render(MockAgentStatus, {
-        props: { agent: codexAgent, reactive: true }
+        props: { agent: browserxAgent, reactive: true }
       });
 
       // Update configuration
@@ -158,11 +158,11 @@ describe('Config Injection Integration', () => {
     });
 
     it('should handle agent status changes based on config', async () => {
-      const codexAgent = new CodexAgent();
-      await codexAgent.initialize();
+      const browserxAgent = new BrowserxAgent();
+      await browserxAgent.initialize();
 
       const { container } = render(MockAgentStatus, {
-        props: { agent: codexAgent, showStatus: true }
+        props: { agent: browserxAgent, showStatus: true }
       });
 
       // Initially should show ready status
@@ -174,7 +174,7 @@ describe('Config Injection Integration', () => {
         sandbox_policy: { mode: 'read-only' }
       });
 
-      codexAgent.updateConfig(agentConfig.getConfig());
+      browserxAgent.updateConfig(agentConfig.getConfig());
 
       // Status should reflect restricted mode
       expect(container.querySelector('[data-testid="agent-status"]')?.textContent)

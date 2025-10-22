@@ -9,7 +9,7 @@ export type { ResponseEvent } from './ResponseEvent';
  * API request payload for Responses API
  * Based on Rust's ResponsesApiRequest struct
  *
- * **Rust Reference**: `codex-rs/core/src/client_common.rs:141-161`
+ * **Rust Reference**: `browserx-rs/core/src/client_common.rs:141-161`
  */
 export interface ResponsesApiRequest {
   model: string;
@@ -35,7 +35,7 @@ export interface ResponsesApiRequest {
  * This interface matches Rust's Prompt struct exactly, containing the input
  * messages, tool definitions, and optional configuration overrides.
  *
- * **Rust Reference**: `codex-rs/core/src/client_common.rs` Lines 24-69
+ * **Rust Reference**: `browserx-rs/core/src/client_common.rs` Lines 24-69
  *
  * **Type Mapping**:
  * - Rust `Vec<ResponseItem>` → TypeScript `ResponseItem[]`
@@ -126,7 +126,7 @@ export type ReasoningSummaryConfig = boolean | { enabled: boolean };
 
 /**
  * Model family information
- * Based on codex-rs ModelFamily
+ * Based on browserx-rs ModelFamily
  */
 export interface ModelFamily {
   family: string;
@@ -137,7 +137,7 @@ export interface ModelFamily {
 
 /**
  * Model provider information
- * Based on codex-rs ModelProviderInfo
+ * Based on browserx-rs ModelProviderInfo
  */
 export interface ModelProviderInfo {
   name: string;
@@ -164,7 +164,7 @@ export type WireApi = 'Responses' | 'Chat';
  * Tool specification discriminated union
  * Matches Rust's ToolSpec enum from client_common.rs
  *
- * **Rust Reference**: `codex-rs/core/src/client_common.rs:163-209`
+ * **Rust Reference**: `browserx-rs/core/src/client_common.rs:163-209`
  */
 export type ToolSpec =
   | { type: 'function'; function: ResponsesApiTool }

@@ -86,24 +86,24 @@ describe('App.svelte - User Message Display', () => {
 });
 
 describe('App.svelte - Branding Label', () => {
-  it('should display "Codex For Chrome v0.0.1 (By AI Republic)"', () => {
+  it('should display "Browserx: in-browser AI Agent (By AI Republic)"', () => {
     const appSource = require('fs').readFileSync(
       require('path').join(__dirname, '../../src/sidepanel/App.svelte'),
       'utf-8'
     );
 
     // Check for updated branding string
-    expect(appSource).toContain('Codex For Chrome v0.0.1 (By AI Republic)');
+    expect(appSource).toContain('Browserx: in-browser AI Agent (By AI Republic)');
   });
 
-  it('should NOT display "Codex Terminal v0.0.1"', () => {
+  it('should NOT display "Browserx Terminal v0.0.1"', () => {
     const appSource = require('fs').readFileSync(
       require('path').join(__dirname, '../../src/sidepanel/App.svelte'),
       'utf-8'
     );
 
     // Verify old branding is replaced
-    expect(appSource).not.toContain('Codex Terminal v1.0.0');
+    expect(appSource).not.toContain('Browserx Terminal v1.0.0');
   });
 
   it('should render branding label with system type', () => {
@@ -112,7 +112,7 @@ describe('App.svelte - Branding Label', () => {
     // Look for branding text in the rendered component
     // Note: This may require waiting for component to mount
     const brandingElements = Array.from(container.querySelectorAll('.terminal-message'))
-      .filter(el => el.textContent?.includes('Codex'));
+      .filter(el => el.textContent?.includes('Browserx'));
 
     expect(brandingElements.length).toBeGreaterThan(0);
   });

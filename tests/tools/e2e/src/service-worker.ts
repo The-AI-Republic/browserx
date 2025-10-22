@@ -1,5 +1,5 @@
 /**
- * Service worker for Codex Web Tool Test extension
+ * Service worker for Browserx Web Tool Test extension
  * Registers browser tools and handles messages from side panel
  */
 

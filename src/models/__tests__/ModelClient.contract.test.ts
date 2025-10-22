@@ -1,7 +1,7 @@
 /**
  * ModelClient Contract Tests
  * Reference: contracts/ModelClient.contract.md
- * Rust Reference: codex-rs/core/src/client.rs:85-445
+ * Rust Reference: browserx-rs/core/src/client.rs:85-445
  *
  * These tests verify that the TypeScript ModelClient implementation
  * matches the Rust ModelClient signatures and behavior.

@@ -4,30 +4,30 @@
 
 /* Base styles */
 :root {
-  --codex-primary: #4f46e5;
-  --codex-secondary: #6366f1;
-  --codex-background: #ffffff;
-  --codex-surface: #f9fafb;
-  --codex-text: #111827;
-  --codex-text-secondary: #6b7280;
-  --codex-border: #e5e7eb;
-  --codex-error: #ef4444;
-  --codex-success: #10b981;
-  --codex-warning: #f59e0b;
+  --browserx-primary: #4f46e5;
+  --browserx-secondary: #6366f1;
+  --browserx-background: #ffffff;
+  --browserx-surface: #f9fafb;
+  --browserx-text: #111827;
+  --browserx-text-secondary: #6b7280;
+  --browserx-border: #e5e7eb;
+  --browserx-error: #ef4444;
+  --browserx-success: #10b981;
+  --browserx-warning: #f59e0b;
 }
 
 @media (prefers-color-scheme: dark) {
   :root {
-    --codex-primary: #6366f1;
-    --codex-secondary: #818cf8;
-    --codex-background: #111827;
-    --codex-surface: #1f2937;
-    --codex-text: #f9fafb;
-    --codex-text-secondary: #9ca3af;
-    --codex-border: #374151;
-    --codex-error: #f87171;
-    --codex-success: #34d399;
-    --codex-warning: #fbbf24;
+    --browserx-primary: #6366f1;
+    --browserx-secondary: #818cf8;
+    --browserx-background: #111827;
+    --browserx-surface: #1f2937;
+    --browserx-text: #f9fafb;
+    --browserx-text-secondary: #9ca3af;
+    --browserx-border: #374151;
+    --browserx-error: #f87171;
+    --browserx-success: #34d399;
+    --browserx-warning: #fbbf24;
   }
 }
 
@@ -67,10 +67,10 @@ body.terminal-mode {
 }
 
 ::-webkit-scrollbar-thumb {
-  background: var(--codex-border);
+  background: var(--browserx-border);
   border-radius: 3px;
 }
 
 ::-webkit-scrollbar-thumb:hover {
-  background: var(--codex-text-secondary);
+  background: var(--browserx-text-secondary);
 }

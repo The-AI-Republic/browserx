@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach } from 'vitest';
-import { CodexAgent } from '../../src/core/CodexAgent';
+import { BrowserxAgent } from '../../src/core/BrowserxAgent';
 import { AgentConfig } from '../../src/config/AgentConfig';
 
 describe('Config Propagation Integration', () => {
@@ -11,9 +11,9 @@ describe('Config Propagation Integration', () => {
   });
 
   describe('Full Config Flow', () => {
-    it('should propagate config through all components via CodexAgent', async () => {
+    it('should propagate config through all components via BrowserxAgent', async () => {
       // Create agent with config
-      const agent = new CodexAgent(config);
+      const agent = new BrowserxAgent(config);
       await agent.initialize();
 
       // Get components
@@ -32,7 +32,7 @@ describe('Config Propagation Integration', () => {
 
     it('should initialize ModelClientFactory with config', async () => {
       // Create agent with config
-      const agent = new CodexAgent(config);
+      const agent = new BrowserxAgent(config);
 
       // Initialize should not throw
       await expect(agent.initialize()).resolves.not.toThrow();
@@ -41,9 +41,9 @@ describe('Config Propagation Integration', () => {
       expect(agent).toBeDefined();
     });
 
-    it('should allow CodexAgent to work without config (backward compat)', async () => {
+    it('should allow BrowserxAgent to work without config (backward compat)', async () => {
       // Create agent without config
-      const agent = new CodexAgent();
+      const agent = new BrowserxAgent();
 
       // Should not throw
       await expect(agent.initialize()).resolves.not.toThrow();
@@ -61,7 +61,7 @@ describe('Config Propagation Integration', () => {
 
   describe('Component Config Usage', () => {
     it('should use config values in components', async () => {
-      const agent = new CodexAgent(config);
+      const agent = new BrowserxAgent(config);
       await agent.initialize();
 
       const session = agent.getSession();

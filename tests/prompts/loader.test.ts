@@ -17,7 +17,7 @@ describe('Agent Prompt Loader', () => {
   });
 
   it('loads agent prompt successfully', async () => {
-    const mockPromptContent = `You are Codex Web Agent, based on GPT-5. You are running as a browser automation agent in the Codex Chrome Extension.
+    const mockPromptContent = `You are Browserx Web Agent, based on GPT-5. You are running as a browser automation agent in the Browserx Chrome Extension.
 
 ## General
 
@@ -39,7 +39,7 @@ describe('Agent Prompt Loader', () => {
     expect(fetch).toHaveBeenCalledWith('chrome-extension://test-extension/prompts/agent_prompt.md');
 
     // Verify content assertions
-    expect(prompt).toContain('Codex Web Agent');
+    expect(prompt).toContain('Browserx Web Agent');
     expect(prompt).not.toContain('shell');
     expect(prompt).not.toContain('filesystem');
     expect(prompt).toContain('querySelector');

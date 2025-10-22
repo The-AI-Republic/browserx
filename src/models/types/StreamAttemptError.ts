@@ -1,6 +1,6 @@
 /**
  * Internal error classification for stream retry logic
- * Rust Reference: codex-rs/core/src/client.rs Lines 447-486
+ * Rust Reference: browserx-rs/core/src/client.rs Lines 447-486
  *
  * This enum-like class matches the Rust StreamAttemptError enum
  * and provides retry logic, backoff calculation, and error conversion.
@@ -110,7 +110,7 @@ export class StreamAttemptError extends Error {
   }
 
   /**
-   * Convert to CodexError for throwing
+   * Convert to BrowserxError for throwing
    * Rust Reference: client.rs:473-485
    *
    * @returns Error suitable for throwing to user code

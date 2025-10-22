@@ -1,8 +1,8 @@
 {
   "manifest_version": 3,
-  "name": "Codex Web Tool Test",
+  "name": "Browserx Web Tool Test",
   "version": "1.0.0",
-  "description": "Test tool for manually testing Codex browser tools",
+  "description": "Test tool for manually testing Browserx browser tools",
   "permissions": [
     "sidePanel",
     "storage",
@@ -16,7 +16,7 @@
     "default_path": "sidepanel/index.html"
   },
   "action": {
-    "default_title": "Open Codex Tool Test"
+    "default_title": "Open Browserx Tool Test"
   },
   "icons": {
     "16": "data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'><text y='14' font-size='14'>🔧</text></svg>",

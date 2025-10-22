@@ -170,7 +170,7 @@
 
       showMessage('API key saved successfully!', 'success');
 
-      // Send message to service worker to reload config and recreate CodexAgent
+      // Send message to service worker to reload config and recreate BrowserxAgent
       chrome.runtime.sendMessage({
         type: 'CONFIG_UPDATE'
       }).catch(err => {
@@ -304,7 +304,7 @@
 
       showMessage('API key removed successfully', 'info');
 
-      // Send message to service worker to reload config and recreate CodexAgent
+      // Send message to service worker to reload config and recreate BrowserxAgent
       chrome.runtime.sendMessage({
         type: 'CONFIG_UPDATE'
       }).catch(err => {
@@ -634,8 +634,8 @@
     display: flex;
     flex-direction: column;
     height: 100%;
-    background: var(--codex-background);
-    color: var(--codex-text);
+    background: var(--browserx-background);
+    color: var(--browserx-text);
   }
 
   .settings-header {
@@ -643,20 +643,20 @@
     justify-content: space-between;
     align-items: center;
     padding: 1rem 1.5rem;
-    border-bottom: 1px solid var(--codex-border);
+    border-bottom: 1px solid var(--browserx-border);
   }
 
   .settings-title {
     margin: 0;
     font-size: 1.25rem;
     font-weight: 600;
-    color: var(--codex-text);
+    color: var(--browserx-text);
   }
 
   .close-button {
     background: none;
     border: none;
-    color: var(--codex-text-secondary);
+    color: var(--browserx-text-secondary);
     cursor: pointer;
     padding: 0.25rem;
     border-radius: 0.375rem;
@@ -667,8 +667,8 @@
   }
 
   .close-button:hover {
-    color: var(--codex-text);
-    background: var(--codex-surface);
+    color: var(--browserx-text);
+    background: var(--browserx-surface);
   }
 
   .settings-content {
@@ -692,7 +692,7 @@
     margin: 0;
     font-size: 1.125rem;
     font-weight: 600;
-    color: var(--codex-text);
+    color: var(--browserx-text);
   }
 
   .auth-status {
@@ -706,13 +706,13 @@
   }
 
   .auth-status.authenticated {
-    color: var(--codex-success);
-    background: color-mix(in srgb, var(--codex-success) 10%, transparent);
+    color: var(--browserx-success);
+    background: color-mix(in srgb, var(--browserx-success) 10%, transparent);
   }
 
   .auth-status.not-authenticated {
-    color: var(--codex-error);
-    background: color-mix(in srgb, var(--codex-error) 10%, transparent);
+    color: var(--browserx-error);
+    background: color-mix(in srgb, var(--browserx-error) 10%, transparent);
   }
 
   .form-group {
@@ -724,7 +724,7 @@
     margin-bottom: 0.5rem;
     font-size: 0.875rem;
     font-weight: 500;
-    color: var(--codex-text);
+    color: var(--browserx-text);
   }
 
   .input-group {
@@ -735,10 +735,10 @@
   .api-key-input {
     flex: 1;
     padding: 0.75rem 3rem 0.75rem 0.75rem;
-    border: 1px solid var(--codex-border);
+    border: 1px solid var(--browserx-border);
     border-radius: 0.5rem;
-    background: var(--codex-surface);
-    color: var(--codex-text);
+    background: var(--browserx-surface);
+    color: var(--browserx-text);
     font-size: 0.875rem;
     font-family: 'SF Mono', 'Monaco', 'Cascadia Code', 'Roboto Mono', monospace;
     transition: all 0.2s;
@@ -746,8 +746,8 @@
 
   .api-key-input:focus {
     outline: none;
-    border-color: var(--codex-primary);
-    box-shadow: 0 0 0 3px color-mix(in srgb, var(--codex-primary) 10%, transparent);
+    border-color: var(--browserx-primary);
+    box-shadow: 0 0 0 3px color-mix(in srgb, var(--browserx-primary) 10%, transparent);
   }
 
   .api-key-input:disabled {
@@ -762,7 +762,7 @@
     transform: translateY(-50%);
     background: none;
     border: none;
-    color: var(--codex-text-secondary);
+    color: var(--browserx-text-secondary);
     cursor: pointer;
     padding: 0.25rem;
     border-radius: 0.25rem;
@@ -773,13 +773,13 @@
   }
 
   .visibility-toggle:hover {
-    color: var(--codex-text);
+    color: var(--browserx-text);
   }
 
   .help-text {
     margin-top: 0.5rem;
     font-size: 0.75rem;
-    color: var(--codex-text-secondary);
+    color: var(--browserx-text-secondary);
   }
 
   .button-group {
@@ -807,31 +807,31 @@
   }
 
   .btn-primary {
-    background: var(--codex-primary);
+    background: var(--browserx-primary);
     color: white;
   }
 
   .btn-primary:hover:not(:disabled) {
-    background: color-mix(in srgb, var(--codex-primary) 90%, black);
+    background: color-mix(in srgb, var(--browserx-primary) 90%, black);
   }
 
   .btn-secondary {
-    background: var(--codex-surface);
-    color: var(--codex-text);
-    border: 1px solid var(--codex-border);
+    background: var(--browserx-surface);
+    color: var(--browserx-text);
+    border: 1px solid var(--browserx-border);
   }
 
   .btn-secondary:hover:not(:disabled) {
-    background: color-mix(in srgb, var(--codex-surface) 80%, var(--codex-text));
+    background: color-mix(in srgb, var(--browserx-surface) 80%, var(--browserx-text));
   }
 
   .btn-danger {
-    background: var(--codex-error);
+    background: var(--browserx-error);
     color: white;
   }
 
   .btn-danger:hover:not(:disabled) {
-    background: color-mix(in srgb, var(--codex-error) 90%, black);
+    background: color-mix(in srgb, var(--browserx-error) 90%, black);
   }
 
   .spinner {
@@ -854,18 +854,18 @@
   }
 
   .test-result.success, .message.success {
-    color: var(--codex-success);
-    background: color-mix(in srgb, var(--codex-success) 10%, transparent);
+    color: var(--browserx-success);
+    background: color-mix(in srgb, var(--browserx-success) 10%, transparent);
   }
 
   .test-result.error, .message.error {
-    color: var(--codex-error);
-    background: color-mix(in srgb, var(--codex-error) 10%, transparent);
+    color: var(--browserx-error);
+    background: color-mix(in srgb, var(--browserx-error) 10%, transparent);
   }
 
   .message.info {
-    color: var(--codex-primary);
-    background: color-mix(in srgb, var(--codex-primary) 10%, transparent);
+    color: var(--browserx-primary);
+    background: color-mix(in srgb, var(--browserx-primary) 10%, transparent);
   }
 
   .security-notice {
@@ -873,12 +873,12 @@
     gap: 0.75rem;
     padding: 1rem;
     border-radius: 0.5rem;
-    background: var(--codex-surface);
-    border: 1px solid var(--codex-border);
+    background: var(--browserx-surface);
+    border: 1px solid var(--browserx-border);
   }
 
   .security-notice svg {
-    color: var(--codex-primary);
+    color: var(--browserx-primary);
     flex-shrink: 0;
     margin-top: 0.125rem;
   }
@@ -886,12 +886,12 @@
   .security-title {
     font-weight: 600;
     margin-bottom: 0.25rem;
-    color: var(--codex-text);
+    color: var(--browserx-text);
   }
 
   .security-text {
     font-size: 0.875rem;
-    color: var(--codex-text-secondary);
+    color: var(--browserx-text-secondary);
     line-height: 1.5;
   }
 </style>

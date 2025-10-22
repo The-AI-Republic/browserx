@@ -96,7 +96,7 @@ export const DEFAULT_TOOLS_CONFIG: IToolsConfig = {
     'page_action'
   ],
   disabled: [],
-  timeout: 30000, // 30 seconds default
+  timeout: 90000, // 90 seconds default
   sandboxPolicy: {
     mode: 'workspace-write',
     writable_roots: [],

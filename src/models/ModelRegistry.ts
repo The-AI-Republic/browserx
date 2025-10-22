@@ -34,65 +34,6 @@ export const MODEL_REGISTRY: Readonly<Record<string, ModelMetadata>> = {
     verbosityLevels: ['low', 'medium', 'high'],
     releaseDate: '2025-01-15',
     baseUrl: 'https://api.openai.com/v1'
-  },
-  'gpt-4o': {
-    id: 'gpt-4o',
-    provider: 'openai',
-    displayName: 'GPT-4 Optimized',
-    contextWindow: 128000,
-    maxOutputTokens: 16384,
-    supportsReasoning: false,
-    supportsVerbosity: false,
-    releaseDate: '2024-05-13',
-    baseUrl: 'https://api.openai.com/v1'
-  },
-  'gpt-4-turbo': {
-    id: 'gpt-4-turbo',
-    provider: 'openai',
-    displayName: 'GPT-4 Turbo',
-    contextWindow: 128000,
-    maxOutputTokens: 4096,
-    supportsReasoning: false,
-    supportsVerbosity: false,
-    deprecated: true,
-    deprecationMessage: 'Use gpt-4o for better performance and larger output capacity',
-    releaseDate: '2024-01-25',
-    baseUrl: 'https://api.openai.com/v1'
-  },
-  'gpt-4': {
-    id: 'gpt-4',
-    provider: 'openai',
-    displayName: 'GPT-4',
-    contextWindow: 8192,
-    maxOutputTokens: 4096,
-    supportsReasoning: false,
-    supportsVerbosity: false,
-    releaseDate: '2023-03-14',
-    baseUrl: 'https://api.openai.com/v1'
-  },
-  'gpt-3.5-turbo': {
-    id: 'gpt-3.5-turbo',
-    provider: 'openai',
-    displayName: 'GPT-3.5 Turbo',
-    contextWindow: 16385,
-    maxOutputTokens: 4096,
-    supportsReasoning: false,
-    supportsVerbosity: false,
-    releaseDate: '2023-03-01',
-    baseUrl: 'https://api.openai.com/v1'
-  },
-  'gpt-3.5-turbo-16k': {
-    id: 'gpt-3.5-turbo-16k',
-    provider: 'openai',
-    displayName: 'GPT-3.5 Turbo 16K',
-    contextWindow: 16385,
-    maxOutputTokens: 4096,
-    supportsReasoning: false,
-    supportsVerbosity: false,
-    deprecated: true,
-    deprecationMessage: 'Use gpt-3.5-turbo which now has 16K context by default',
-    releaseDate: '2023-06-13',
-    baseUrl: 'https://api.openai.com/v1'
   }
 } as const;
 

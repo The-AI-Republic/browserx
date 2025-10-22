@@ -103,41 +103,60 @@ export class CodexAgent {
   }
 
   /**
-   * Handle model configuration changes
+   * T028: Handle model configuration changes
+   * Reinitializes session when model changes
    */
-  private handleModelConfigChange(event: IConfigChangeEvent): void {
-    // Update model client factory with new config
+  private async handleModelConfigChange(event: IConfigChangeEvent): Promise<void> {
+    const oldModel = event.oldValue?.selected;
     const modelConfig = this.config.getModelConfig();
-    console.log('Model configuration changed:', modelConfig.selected);
+    const newModel = modelConfig.selected;
 
-    // Emit event for UI update
-    this.emitEvent({
-      type: 'ConfigUpdate',
-      data: {
-        section: 'model',
-        config: modelConfig
+    console.log(`Model configuration changed: ${oldModel} -> ${newModel}`);
+
+    // T028: Reinitialize session when model changes
+    if (oldModel !== newModel) {
+      try {
+        // Shutdown existing session
+        await this.session.shutdown();
+
+        // Clear conversation history
+        this.session.clearHistory();
+
+        // Create new model client for the selected model
+        const modelClient = await this.modelClientFactory.createClientForModel(newModel);
+
+        // Create new TurnContext with updated model
+        const taskContext = new TurnContext(modelClient, {});
+        const userInstructions = await loadUserInstructions();
+        taskContext.setUserInstructions(userInstructions);
+        const baseInstructions = await loadPrompt();
+        taskContext.setBaseInstructions(baseInstructions);
+
+        // Update session with new turn context
+        this.session.setTurnContext(taskContext);
+
+        // Reinitialize session
+        await this.session.initializeSession('create', this.session.conversationId, this.config);
+
+        console.log(`Session reinitialized with model: ${newModel}`);
+      } catch (error) {
+        console.error('Failed to reinitialize session after model change:', error);
       }
-    });
+    }
+
+    // Note: UI update is handled by Settings.svelte success message
   }
 
   /**
    * Handle security configuration changes
    */
   private handleSecurityConfigChange(event: IConfigChangeEvent): void {
-    const config = this.config.getConfig();
-    console.log('Security configuration changed:', config.security?.approvalPolicy);
+    console.log('Security configuration changed');
 
     // Update approval manager policies
     // ApprovalManager will handle its own config updates via its subscription
 
-    // Emit event for UI update
-    this.emitEvent({
-      type: 'ConfigUpdate',
-      data: {
-        section: 'security',
-        config: config.security
-      }
-    });
+    // Note: UI update is handled by the component that initiated the change
   }
 
   /**

@@ -462,3 +462,94 @@ export function validateAuthConfig(auth: any): ValidationResult {
 
   return { valid: true };
 }
+
+/**
+ * T006, T007: Model Registry Validation Functions
+ * Feature: 001-multi-model-support
+ */
+
+import { ModelRegistry } from '../models/ModelRegistry';
+import type {
+  ModelValidationResult as RegistryValidationResult,
+  ConfiguredFeatures
+} from '../models/types/ModelRegistry';
+
+/**
+ * T006, T045: Validate model configuration against feature compatibility
+ * Enhanced version that uses ModelRegistry for validation
+ *
+ * @param config Model configuration to validate
+ * @returns Validation result with model registry information
+ */
+export function validateModelConfigWithRegistry(config: IModelConfig): RegistryValidationResult {
+  const features: ConfiguredFeatures = {
+    reasoningEffort: config.reasoningEffort,
+    reasoningSummary: config.reasoningSummary,
+    verbosity: config.verbosity,
+    contextWindow: config.contextWindow,
+    maxOutputTokens: config.maxOutputTokens
+  };
+
+  const result = ModelRegistry.validateCompatibility(config.selected, features);
+
+  // T045: Log validation failures for debugging
+  if (!result.valid) {
+    console.warn('[ModelValidation] Model configuration validation failed:', {
+      model: config.selected,
+      errors: result.errors,
+      warnings: result.warnings,
+      incompatibleFeatures: result.incompatibleFeatures,
+      suggestedActions: result.suggestedActions
+    });
+  } else if (result.warnings && result.warnings.length > 0) {
+    console.info('[ModelValidation] Model configuration has warnings:', {
+      model: config.selected,
+      warnings: result.warnings
+    });
+  }
+
+  return result;
+}
+
+/**
+ * T007: Get default model ID, handling deprecated models
+ *
+ * @param config Agent configuration
+ * @returns Default model ID
+ */
+export function getDefaultModel(config: any): string {
+  const selected = config?.model?.selected;
+
+  if (!selected || selected.trim() === '') {
+    return ModelRegistry.getDefaultModel();
+  }
+
+  const metadata = ModelRegistry.getModel(selected);
+
+  // If selected model is deprecated, try to find an alternative
+  if (metadata?.deprecated) {
+    const alternatives = ModelRegistry.getAvailableModels({
+      excludeDeprecated: true,
+      provider: metadata.provider
+    });
+
+    if (alternatives.length > 0) {
+      console.warn(
+        `Model ${selected} is deprecated. Consider switching to ${alternatives[0].id}.` +
+        (metadata.deprecationMessage ? ` ${metadata.deprecationMessage}` : '')
+      );
+    }
+
+    // Still return the deprecated model - user must manually change it
+    // Per clarification Q1: show warning but continue using deprecated model
+    return selected;
+  }
+
+  // If model doesn't exist in registry, return default
+  if (!metadata) {
+    console.warn(`Unknown model ${selected}, using default`);
+    return ModelRegistry.getDefaultModel();
+  }
+
+  return selected;
+}

@@ -387,8 +387,10 @@ export class ModelClientFactory {
           requires_openai_auth: true,
         };
 
+        // T024: Use selected model from config instead of hardcoded 'gpt-5'
+        const selectedModel = this.getSelectedModel();
         const modelFamily = {
-          family: 'gpt-5',
+          family: selectedModel,
           base_instructions: 'You are a helpful coding assistant.',
           supports_reasoning_summaries: true,
           needs_special_apply_patch_instructions: false,
@@ -448,10 +450,13 @@ export class ModelClientFactory {
   }
 
   /**
-   * Get selected model from config
+   * T024: Get selected model from config
    */
   getSelectedModel(): string {
-    // Config integration placeholder - returns default
+    if (this.config) {
+      const modelConfig = this.config.getModelConfig();
+      return modelConfig.selected || DEFAULT_MODEL;
+    }
     return DEFAULT_MODEL;
   }
 

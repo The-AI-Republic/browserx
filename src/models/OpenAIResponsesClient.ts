@@ -32,6 +32,7 @@ import type { TokenUsage } from './types/TokenUsage';
 import { SSEEventParser } from './SSEEventParser';
 import { RequestQueue, RequestPriority, type QueuedRequest } from './RequestQueue';
 import { get_full_instructions, get_formatted_input } from './PromptHelpers';
+import { ModelRegistry } from './ModelRegistry';
 
 /**
  * SSE Event structure from OpenAI Responses API
@@ -156,18 +157,10 @@ export class OpenAIResponsesClient extends ModelClient {
     this.currentModel = model;
   }
 
+  // T025: Use ModelRegistry for dynamic context window lookup
   getModelContextWindow(): number | undefined {
-    // Return context window sizes for known OpenAI models
-    const contextWindows: Record<string, number> = {
-      'gpt-4': 8192,
-      'gpt-4-32k': 32768,
-      'gpt-4-turbo': 128000,
-      'gpt-4o': 128000,
-      'gpt-5': 200000,
-      'gpt-3.5-turbo': 4096,
-      'gpt-3.5-turbo-16k': 16384,
-    };
-    return contextWindows[this.currentModel];
+    const modelMetadata = ModelRegistry.getModel(this.currentModel);
+    return modelMetadata?.contextWindow;
   }
 
   getAutoCompactTokenLimit(): number | undefined {

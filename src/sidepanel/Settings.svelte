@@ -8,6 +8,8 @@
   import { AgentConfig } from '../config/AgentConfig.js';
   import { encryptApiKey, decryptApiKey } from '../utils/encryption.js';
   import { AuthMode } from '../models/types/index.js';
+  import ModelSelector from './settings/ModelSelector.svelte';
+  import type { ConfiguredFeatures } from '../models/types/ModelRegistry';
 
   // Component state
   let apiKey = '';
@@ -20,6 +22,11 @@
   let testResult: { valid: boolean; error?: string } | null = null;
   let isAuthenticated = false;
   let currentAuthMode: AuthMode | null = null;
+
+  // T011: Model configuration state
+  let selectedModel = 'gpt-5';
+  let configuredFeatures: ConfiguredFeatures = {};
+  let modelValidationError = '';
 
   // AgentConfig instance for this component
   let agentConfig: AgentConfig | null = null;
@@ -67,6 +74,17 @@
         isAuthenticated = false;
         currentAuthMode = null;
       }
+
+      // T011: Load model config
+      const modelConfig = agentConfig.getModelConfig();
+      selectedModel = modelConfig.selected || 'gpt-5';
+      configuredFeatures = {
+        reasoningEffort: modelConfig.reasoningEffort,
+        reasoningSummary: modelConfig.reasoningSummary,
+        verbosity: modelConfig.verbosity,
+        contextWindow: modelConfig.contextWindow,
+        maxOutputTokens: modelConfig.maxOutputTokens
+      };
     } catch (error) {
       console.error('Failed to load settings:', error);
       showMessage('Failed to load settings', 'error');
@@ -341,6 +359,47 @@
       saveApiKey();
     }
   }
+
+  /**
+   * T011, T016: Handle model selection change
+   */
+  async function handleModelChange(event: CustomEvent<{ modelId: string }>) {
+    if (!agentConfig) return;
+
+    try {
+      isLoading = true;
+      const { modelId } = event.detail;
+
+      // Update model config
+      const modelConfig = agentConfig.getModelConfig();
+      agentConfig.updateModelConfig({
+        ...modelConfig,
+        selected: modelId
+      });
+
+      selectedModel = modelId;
+      modelValidationError = '';
+
+      showMessage('Model changed successfully. Session will be reinitialized.', 'success');
+
+      // Trigger session reinitialization
+      chrome.runtime.sendMessage({ type: 'CONFIG_UPDATE' });
+    } catch (error) {
+      console.error('Failed to change model:', error);
+      showMessage('Failed to change model', 'error');
+    } finally {
+      isLoading = false;
+    }
+  }
+
+  /**
+   * T015: Handle validation errors
+   */
+  function handleValidationError(event: CustomEvent) {
+    const { errors, incompatibleFeatures } = event.detail;
+    modelValidationError = errors.join('. ');
+    showMessage(`Cannot select model: ${modelValidationError}`, 'error');
+  }
 </script>
 
 <div class="settings-container">
@@ -518,6 +577,37 @@
           {saveMessage}
         </div>
       {/if}
+    </div>
+
+    <!-- T011: Model Selection Section -->
+    <div class="settings-section">
+      <h3 class="section-title">Model Selection</h3>
+      <div class="form-group">
+        <label class="form-label">
+          Choose AI Model
+        </label>
+        <ModelSelector
+          {selectedModel}
+          {configuredFeatures}
+          disabled={isLoading}
+          on:modelChange={handleModelChange}
+          on:validationError={handleValidationError}
+        />
+        <div class="help-text">
+          Select the OpenAI model to use for conversations. Different models have different capabilities and costs.
+        </div>
+
+        {#if modelValidationError}
+          <div class="message error">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor">
+              <circle cx="12" cy="12" r="10"></circle>
+              <line x1="15" y1="9" x2="9" y2="15"></line>
+              <line x1="9" y1="9" x2="15" y2="15"></line>
+            </svg>
+            {modelValidationError}
+          </div>
+        {/if}
+      </div>
     </div>
 
     <!-- Security Notice -->

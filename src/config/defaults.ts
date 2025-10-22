@@ -4,6 +4,7 @@
 
 import type { IAgentConfig, IModelConfig, IUserPreferences, ICacheSettings, IExtensionSettings, IPermissionSettings, IToolsConfig, IStorageConfig, IAuthConfig } from './types';
 import { AuthMode } from '../models/types/Auth.js';
+import { ModelRegistry } from '../models/ModelRegistry';
 
 export const DEFAULT_AUTH_CONFIG: IAuthConfig = {
   apiKey: '',
@@ -13,8 +14,9 @@ export const DEFAULT_AUTH_CONFIG: IAuthConfig = {
   lastUpdated: 0
 };
 
+// T029: Use ModelRegistry.getDefaultModel() for default model
 export const DEFAULT_MODEL_CONFIG: IModelConfig = {
-  selected: 'gpt-5',
+  selected: ModelRegistry.getDefaultModel(),
   provider: 'openai',
   contextWindow: 128000,
   maxOutputTokens: 16384,

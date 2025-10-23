@@ -6,13 +6,14 @@
 import { ModelClient, ModelClientError, type RetryConfig } from './ModelClient';
 import { OpenAIResponsesClient } from './OpenAIResponsesClient';
 import { ChromeAuthManager } from './ChromeAuthManager';
+import { ModelRegistry } from './ModelRegistry';
 import type { AgentConfig } from '../config/AgentConfig';
 
 /**
  * Supported model providers
- * Note: Anthropic removed - not supported in Rust browserx-rs implementation
+ * T018, Added xAI and Anthropic provider support
  */
-export type ModelProvider = 'openai';
+export type ModelProvider = 'openai' | 'xai' | 'anthropic';
 
 /**
  * Configuration for model client creation
@@ -42,7 +43,7 @@ const STORAGE_KEYS = {
 
 /**
  * Model name to provider mapping
- * Note: Only OpenAI models supported (matching Rust browserx-rs implementation)
+ * Added support for xAI Grok models
  */
 const MODEL_PROVIDER_MAP: Record<string, ModelProvider> = {
   // OpenAI models
@@ -50,6 +51,8 @@ const MODEL_PROVIDER_MAP: Record<string, ModelProvider> = {
   'gpt-4': 'openai',
   'gpt-4-turbo': 'openai',
   'gpt-4o': 'openai',
+  // xAI models
+  'grok-4-fast-reasoning': 'xai',
 };
 
 const DEFAULT_MODEL = 'gpt-5';
@@ -175,6 +178,7 @@ export class ModelClientFactory {
 
   /**
    * Get the provider for a given model name
+   * Enhanced to check ModelRegistry for multi-provider support
    * @param model The model name
    * @returns The provider for the model
    */
@@ -186,12 +190,24 @@ export class ModelClientFactory {
     const provider = MODEL_PROVIDER_MAP[model];
 
     if (!provider) {
+      // Check ModelRegistry for the model's provider
+      const modelMetadata = ModelRegistry.getModel(model);
+      if (modelMetadata && (modelMetadata.provider === 'openai' || modelMetadata.provider === 'xai' || modelMetadata.provider === 'anthropic')) {
+        return modelMetadata.provider as ModelProvider;
+      }
+
       // Try to infer from model name patterns
       if (model.startsWith('gpt-')) {
         return 'openai';
       }
+      if (model.startsWith('grok-')) {
+        return 'xai';
+      }
+      if (model.startsWith('claude-')) {
+        return 'anthropic';
+      }
 
-      throw new ModelClientError(`Unknown model: ${model}. Only OpenAI models supported.`);
+      throw new ModelClientError(`Unknown model: ${model}. Supported providers: OpenAI, xAI, Anthropic.`);
     }
 
     return provider;
@@ -229,18 +245,7 @@ export class ModelClientFactory {
       }
     }
 
-    // Fallback to original storage method for backward compatibility
-    const key = STORAGE_KEYS.OPENAI_API_KEY;
-
-    return new Promise((resolve, reject) => {
-      chrome.storage.sync.get([key], (result) => {
-        if (chrome.runtime.lastError) {
-          reject(new Error(chrome.runtime.lastError.message));
-        } else {
-          resolve(result[key] || null);
-        }
-      });
-    });
+    return null;
   }
 
   /**
@@ -322,13 +327,20 @@ export class ModelClientFactory {
   }
 
   /**
-   * Load configuration for a provider from Chrome storage
+   * T032, Load configuration for a provider from Chrome storage
    * @param provider The provider
    * @returns Promise resolving to the client configuration
    * Note: API key can be null - validation happens when making API requests
    */
   private async loadConfigForProvider(provider: ModelProvider): Promise<ModelClientConfig> {
-    const apiKey = await this.loadApiKey(provider);
+    // Get provider-specific API key
+    let apiKey: string | null = null;
+    if (this.config) {
+      const modelConfig = this.config.getModelConfig();
+      apiKey = await this.config.getProviderApiKey(modelConfig.provider);
+    } else {
+      apiKey = await this.loadApiKey(provider);
+    }
 
     // Don't throw error if API key is missing - allow model client to be created
     // The error will be thrown when actually trying to make an API request
@@ -338,6 +350,15 @@ export class ModelClientFactory {
       apiKey: apiKey || null,
       options: {},
     };
+
+    // Load provider-specific base URL
+    if (this.config) {
+      const modelConfig = this.config.getModelConfig();
+      const providerConfig = this.config.getProvider(modelConfig.provider);
+      if (providerConfig?.baseUrl) {
+        config.options!.baseUrl = providerConfig.baseUrl;
+      }
+    }
 
     // Load provider-specific options
     if (provider === 'openai') {
@@ -368,27 +389,44 @@ export class ModelClientFactory {
   }
 
   /**
-   * Instantiate a client with the given configuration
+   * T032, Instantiate a client with the given configuration
    * @param config The client configuration
    * @returns Model client instance
    */
   private instantiateClient(config: ModelClientConfig): ModelClient {
-    switch (config.provider) {
+    // Get provider name from config if available
+    let providerName = config.provider;
+    let baseUrl = config.options?.baseUrl;
+
+    if (this.config) {
+      const modelConfig = this.config.getModelConfig();
+      providerName = modelConfig.provider as ModelProvider;
+
+      // Use provider-specific base URL from model metadata if not in config
+      if (!baseUrl) {
+        const modelMetadata = ModelRegistry.getModel(modelConfig.selected);
+        baseUrl = modelMetadata?.baseUrl;
+      }
+    }
+
+    switch (providerName) {
       case 'openai':
+      default:
         // Use the experimental OpenAI Responses API client by default
         // Construct minimal provider and model family configs aligned with browserx-rs
-        const baseUrl = config.options?.baseUrl;
         const organization = config.options?.organization;
 
         const provider = {
-          name: 'openai',
+          name: providerName,
           base_url: baseUrl,
           wire_api: 'Responses' as const,
           requires_openai_auth: true,
         };
 
+        // Use selected model from config instead of hardcoded 'gpt-5'
+        const selectedModel = this.getSelectedModel();
         const modelFamily = {
-          family: 'gpt-5',
+          family: selectedModel,
           base_instructions: 'You are a helpful coding assistant.',
           supports_reasoning_summaries: true,
           needs_special_apply_patch_instructions: false,
@@ -407,9 +445,6 @@ export class ModelClientFactory {
           modelFamily,
           provider,
         });
-
-      default:
-        throw new ModelClientError(`Unsupported provider: ${(config as any).provider}`);
     }
   }
 
@@ -451,24 +486,34 @@ export class ModelClientFactory {
    * Get selected model from config
    */
   getSelectedModel(): string {
-    // Config integration placeholder - returns default
+    if (this.config) {
+      const modelConfig = this.config.getModelConfig();
+      return modelConfig.selected || DEFAULT_MODEL;
+    }
     return DEFAULT_MODEL;
   }
 
   /**
    * Get API key from config for a provider
    */
-  getApiKey(provider: string): string | undefined {
-    // Config integration placeholder - returns undefined
-    return undefined;
+  async getApiKey(provider: string): Promise<string | null> {
+    if (!this.config) {
+      return await this.loadApiKey('openai');
+    }
+
+    return await this.config.getProviderApiKey(provider);
   }
 
   /**
    * Get base URL from config for a provider
    */
   getBaseUrl(provider: string): string | undefined {
-    // Config integration placeholder - returns undefined
-    return undefined;
+    if (!this.config) {
+      return undefined;
+    }
+
+    const providerConfig = this.config.getProvider(provider);
+    return providerConfig?.baseUrl || undefined;
   }
 }
 

@@ -803,7 +803,7 @@ export class Session {
 
   /**
    * Initialize session with RolloutRecorder (replaces ConversationStore)
-   * T023: Follows browserx-rs pattern from research.md
+   * Follows browserx-rs pattern from research.md
    */
   async initializeSession(
     mode: 'create' | 'resume',
@@ -860,7 +860,7 @@ export class Session {
 
   /**
    * Persist rollout items (replaces ConversationStore.addMessage)
-   * T024: Record items to RolloutRecorder
+   * Record items to RolloutRecorder
    */
   async persistRolloutItems(items: RolloutItem[]): Promise<void> {
     if (this.services?.rollout) {
@@ -876,7 +876,7 @@ export class Session {
 
   /**
    * Flush rollout recorder before session ends
-   * T025: Graceful shutdown
+   * Graceful shutdown
    */
   async shutdown(): Promise<void> {
     if (this.services?.rollout) {
@@ -893,7 +893,7 @@ export class Session {
   // ========================================================================
 
   /**
-   * T010: Generate internal submission ID
+   * Generate internal submission ID
    *
    * Generates unique internal submission IDs for auto-generated operations
    * (e.g., auto-compact). Uses simple counter since JavaScript is single-threaded.
@@ -908,7 +908,7 @@ export class Session {
   }
 
   /**
-   * T012: Utility getters
+   * Utility getters
    */
 
   /**
@@ -928,7 +928,7 @@ export class Session {
   }
 
   /**
-   * T013: Enhanced send_event with rollout persistence
+   * Enhanced send_event with rollout persistence
    *
    * Persists event to rollout and emits via event emitter.
    * Replaces/enhances existing emitEvent() method.
@@ -958,7 +958,7 @@ export class Session {
   }
 
   /**
-   * T014: Notify background event
+   * Notify background event
    *
    * Helper to create and send BackgroundEvent.
    *
@@ -979,7 +979,7 @@ export class Session {
   }
 
   /**
-   * T015: Notify stream error
+   * Notify stream error
    *
    * Helper to create and send StreamErrorEvent.
    *
@@ -1001,7 +1001,7 @@ export class Session {
   }
 
   /**
-   * T016: Send token count event
+   * Send token count event
    *
    * Retrieves token info and rate limits from SessionState and emits TokenCountEvent.
    *
@@ -1026,7 +1026,7 @@ export class Session {
   }
 
   /**
-   * T018: Notify approval
+   * Notify approval
    *
    * Resolves a pending approval request with the user's decision.
    * Locates the pending approval in ActiveTurn, removes it, and calls the resolver.
@@ -1054,7 +1054,7 @@ export class Session {
 
 
   /**
-   * T021: Take all running tasks
+   * Take all running tasks
    *
    * Extracts all running tasks from ActiveTurn, drains pending approvals/input,
    * and clears the ActiveTurn.
@@ -1153,7 +1153,7 @@ export class Session {
   }
 
   /**
-   * T024: On task finished (UPDATED for Feature 012)
+   * On task finished (UPDATED for Feature 012)
    *
    * Called when a task completes successfully.
    * Removes the task from ActiveTurn and emits TaskComplete event.
@@ -1181,7 +1181,7 @@ export class Session {
   }
 
   /**
-   * T025: Spawn task (UPDATED for Feature 012: Session task management)
+   * Spawn task (UPDATED for Feature 012: Session task management)
    *
    * Spawns a SessionTask and manages its lifecycle.
    * Matches Rust Session::spawn_task() pattern.
@@ -1235,7 +1235,7 @@ export class Session {
   }
 
   /**
-   * T026: Interrupt task
+   * Interrupt task
    *
    * Wrapper around abortAllTasks with Interrupted reason.
    * Used when user explicitly interrupts execution.
@@ -1249,7 +1249,7 @@ export class Session {
   // ========================================================================
 
   /**
-   * T027: Persist rollout response items
+   * Persist rollout response items
    *
    * Converts ResponseItems to RolloutItems and persists them via RolloutRecorder.
    * This is used to save conversation history to persistent storage.
@@ -1277,7 +1277,7 @@ export class Session {
   }
 
   /**
-   * T028: Record conversation items with dual persistence
+   * Record conversation items with dual persistence
    *
    * Records ResponseItems to both SessionState (in-memory history) and
    * RolloutRecorder (persistent storage).
@@ -1293,7 +1293,7 @@ export class Session {
   }
 
   /**
-   * T029: Record input and rollout user message
+   * Record input and rollout user message
    *
    * Converts InputItems to ResponseItem, records to history, derives UserMessage event,
    * and persists only the UserMessage to rollout (not the full ResponseItem).
@@ -1345,7 +1345,7 @@ export class Session {
   }
 
   /**
-   * T030: Enhance reconstruct history from rollout
+   * Enhance reconstruct history from rollout
    *
    * Reconstructs conversation history from rollout storage, handling both
    * regular ResponseItems and compacted history with summaries.
@@ -1387,7 +1387,7 @@ export class Session {
   // ========================================================================
 
   /**
-   * T031: Update token usage info
+   * Update token usage info
    *
    * Updates SessionState with token usage information and sends token count event.
    *
@@ -1420,7 +1420,7 @@ export class Session {
   }
 
   /**
-   * T032: Update rate limits
+   * Update rate limits
    *
    * Updates SessionState with rate limit information and sends token count event.
    *
@@ -1444,7 +1444,7 @@ export class Session {
   // ========================================================================
 
   /**
-   * T033: Inject input
+   * Inject input
    *
    * Attempts to inject input into the active turn. If there's an active turn,
    * the input is queued for processing. If there's no active turn, the input
@@ -1473,7 +1473,7 @@ export class Session {
   }
 
   /**
-   * T034: Turn input with history
+   * Turn input with history
    *
    * Combines session history with extra turn items to create full turn input.
    * This is used when preparing input for a new turn.
@@ -1490,7 +1490,7 @@ export class Session {
   }
 
   /**
-   * T036: Record initial history
+   * Record initial history
    *
    * Records initial conversation history based on session mode.
    * - New sessions: Records initial context

@@ -1,5 +1,5 @@
 /**
- * T033-T036, T043: Main centralized agent configuration class
+ * T033-T036, Main centralized agent configuration class
  */
 
 import type {
@@ -12,7 +12,8 @@ import type {
   IExportData,
   IToolsConfig,
   IToolSpecificConfig,
-  IAuthConfig
+  IAuthConfig,
+  IProviderStatus
 } from './types';
 import { ConfigValidationError } from './types';
 import { ConfigStorage } from '../storage/ConfigStorage';
@@ -22,7 +23,8 @@ import {
   mergeWithDefaults,
   getDefaultProviders
 } from './defaults';
-import { validateConfig, validateModelConfig, validateProviderConfig, validateAuthConfig } from './validators';
+import { validateConfig, validateModelConfig, validateProviderConfig, validateAuthConfig, detectProviderFromKey } from './validators';
+import { encryptApiKey, decryptApiKey } from '../utils/encryption';
 
 export class AgentConfig implements IConfigService {
   private static instance: AgentConfig | null = null;
@@ -219,15 +221,10 @@ export class AgentConfig implements IConfigService {
     return newModel;
   }
 
-  // T035: Provider management
+  // Provider management
   getProviders(): Record<string, IProviderConfig> {
     this.ensureInitialized();
     return { ...this.currentConfig.providers };
-  }
-
-  getProvider(id: string): IProviderConfig | null {
-    this.ensureInitialized();
-    return this.currentConfig.providers[id] || null;
   }
 
   addProvider(provider: IProviderConfig): IProviderConfig {
@@ -298,6 +295,178 @@ export class AgentConfig implements IConfigService {
     this.emitChangeEvent('provider', deleted, null);
   }
 
+  /**
+   * Set API key for a specific provider
+   * @param providerId - Provider identifier (e.g., 'openai', 'xai', 'anthropic')
+   * @param apiKey - Unencrypted API key (will be encrypted before storage)
+   * @returns Provider configuration with encrypted API key
+   * @throws Error if provider is unknown
+   * @example
+   * await agentConfig.setProviderApiKey('xai', 'xai-abc123...');
+   */
+  async setProviderApiKey(providerId: string, apiKey: string): Promise<IProviderConfig> {
+    this.ensureInitialized();
+
+  // Use static import for encryption utilities
+
+    // Get or create provider configuration
+    let provider = this.currentConfig.providers[providerId];
+    if (!provider) {
+      const defaults = getDefaultProviders();
+      if (!defaults[providerId]) {
+        throw new Error(`Unknown provider: ${providerId}`);
+      }
+      provider = { ...defaults[providerId] };
+    }
+
+    // Encrypt and store API key
+    provider.apiKey = encryptApiKey(apiKey);
+    this.currentConfig.providers[providerId] = provider;
+
+    await this.storage.set(this.currentConfig);
+    this.emitChangeEvent('provider', null, provider);
+
+    return provider;
+  }
+
+  /**
+   * Get decrypted API key for a specific provider
+   * @param providerId - Provider identifier (e.g., 'openai', 'xai', 'anthropic')
+   * @returns Decrypted API key or null if not configured
+   * @remarks Includes backward compatibility fallback to auth.apiKey
+   * @example
+   * const apiKey = await agentConfig.getProviderApiKey('openai');
+   * if (apiKey) {
+   *   // Use API key for requests
+   * }
+   */
+  async getProviderApiKey(providerId: string): Promise<string | null> {
+    this.ensureInitialized();
+
+  // Use static import for encryption utilities
+
+    // Check provider-specific key first
+    const provider = this.currentConfig.providers[providerId];
+    if (provider?.apiKey) {
+      return decryptApiKey(provider.apiKey);
+    }
+
+    // Backward compatibility fallback to auth.apiKey
+    if (this.currentConfig.auth?.apiKey) {
+      const decryptedKey = decryptApiKey(this.currentConfig.auth.apiKey);
+      if (decryptedKey) {
+        const detectedProvider = detectProviderFromKey(decryptedKey);
+        if (detectedProvider === providerId) {
+          return decryptedKey;
+        }
+      }
+    }
+
+    return null;
+  }
+
+  /**
+   * Get provider configuration by ID
+   * @param id - Provider identifier
+   * @returns Provider configuration or null if not found
+   * @example
+   * const provider = agentConfig.getProvider('xai');
+   * if (provider) {
+   *   console.log(provider.baseUrl); // https://api.x.ai/v1
+   * }
+   */
+  getProvider(id: string): IProviderConfig | null {
+    this.ensureInitialized();
+    return this.currentConfig.providers[id] || null;
+  }
+
+  /**
+   * Get list of providers with configured API keys
+   * @returns Array of provider IDs that have API keys configured
+   * @example
+   * const configured = agentConfig.getConfiguredProviders();
+   * // ['openai', 'xai'] - providers with API keys
+   */
+  getConfiguredProviders(): string[] {
+    this.ensureInitialized();
+    return Object.keys(this.currentConfig.providers).filter(
+      id => this.currentConfig.providers[id].apiKey && this.currentConfig.providers[id].apiKey !== ''
+    );
+  }
+
+  /**
+   * Switch active provider
+   * @param providerId - Provider identifier to switch to
+   * @throws Error if provider not found or no API key configured
+   * @remarks Conversation blocking should be handled in UI layer
+   * @example
+   * await agentConfig.switchProvider('xai');
+   * // Model.provider is now 'xai'
+   */
+  async switchProvider(providerId: string): Promise<void> {
+    this.ensureInitialized();
+
+    // Check if provider exists and has API key
+    const provider = this.currentConfig.providers[providerId];
+    if (!provider) {
+      throw new Error(`Provider not found: ${providerId}`);
+    }
+
+    const apiKey = await this.getProviderApiKey(providerId);
+    if (!apiKey) {
+      throw new Error(`No API key configured for provider: ${providerId}`);
+    }
+
+    // Check for active conversation (will be implemented in UI layer)
+    // For now, just update the provider
+
+    const oldModel = this.currentConfig.model;
+    this.currentConfig.model.provider = providerId;
+
+    await this.storage.set(this.currentConfig);
+    this.emitChangeEvent('model', oldModel, this.currentConfig.model);
+  }
+
+  /**
+   * Get provider status information
+   * @param providerId - Provider identifier
+   * @returns Provider status with configuration and active state
+   * @example
+   * const status = agentConfig.getProviderStatus('xai');
+   * if (status.configured && status.active) {
+   *   console.log('xAI is configured and currently active');
+   * }
+   */
+  getProviderStatus(providerId: string): IProviderStatus {
+    this.ensureInitialized();
+
+    const provider = this.currentConfig.providers[providerId];
+    const hasApiKey = !!(provider?.apiKey && provider.apiKey !== '');
+    const isActive = this.currentConfig.model.provider === providerId;
+
+    return {
+      id: providerId,
+      name: provider?.name || providerId,
+      configured: hasApiKey,
+      active: isActive,
+      lastUsed: undefined,
+      requestCount: undefined
+    };
+  }
+
+  /**
+   * Detect provider from API key format
+   * @param apiKey - Unencrypted API key
+   * @returns Provider identifier or 'unknown' if cannot be detected
+   * @remarks Uses regex patterns to identify provider from key format
+   * @example
+   * const provider = await agentConfig.detectProviderFromKey('xai-abc123');
+   * console.log(provider); // 'xai'
+   */
+  async detectProviderFromKey(apiKey: string): Promise<string> {
+  return detectProviderFromKey(apiKey);
+  }
+
   // Authentication management
   /**
    * Get authentication configuration
@@ -363,7 +532,7 @@ export class AgentConfig implements IConfigService {
   }
 
 
-  // T036: Profile management
+  // Profile management
   getProfiles(): Record<string, IProfileConfig> {
     this.ensureInitialized();
     return { ...(this.currentConfig.profiles || {}) };
@@ -528,10 +697,13 @@ export class AgentConfig implements IConfigService {
     this.ensureInitialized();
 
     const tools = this.currentConfig.tools || { enabled: [], disabled: [] };
+    if (!tools.enabled) tools.enabled = [];
+    if (!tools.disabled) tools.disabled = [];
+
     if (!tools.enabled.includes(toolName)) {
       tools.enabled.push(toolName);
     }
-    tools.disabled = (tools.disabled || []).filter(name => name !== toolName);
+    tools.disabled = tools.disabled.filter(name => name !== toolName);
 
     this.currentConfig.tools = tools as IToolsConfig;
     this.storage.set(this.currentConfig).catch(err => {
@@ -544,8 +716,10 @@ export class AgentConfig implements IConfigService {
     this.ensureInitialized();
 
     const tools = this.currentConfig.tools || { enabled: [], disabled: [] };
-    tools.enabled = tools.enabled.filter(name => name !== toolName);
+    if (!tools.enabled) tools.enabled = [];
     if (!tools.disabled) tools.disabled = [];
+
+    tools.enabled = tools.enabled.filter(name => name !== toolName);
     if (!tools.disabled.includes(toolName)) {
       tools.disabled.push(toolName);
     }
@@ -597,7 +771,7 @@ export class AgentConfig implements IConfigService {
     this.emitChangeEvent('tools' as any, oldConfig, this.currentConfig.tools.perToolConfig[toolName]);
   }
 
-  // T043: Event emitter functionality
+  // Event emitter functionality
   on(event: 'config-changed', handler: (e: IConfigChangeEvent) => void): void {
     if (!this.eventHandlers.has(event)) {
       this.eventHandlers.set(event, new Set());

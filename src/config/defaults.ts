@@ -1,9 +1,10 @@
 /**
- * T037: Default centralized agent configuration values
+ * Default centralized agent configuration values
  */
 
 import type { IAgentConfig, IModelConfig, IUserPreferences, ICacheSettings, IExtensionSettings, IPermissionSettings, IToolsConfig, IStorageConfig, IAuthConfig } from './types';
 import { AuthMode } from '../models/types/Auth.js';
+import { ModelRegistry } from '../models/ModelRegistry';
 
 export const DEFAULT_AUTH_CONFIG: IAuthConfig = {
   apiKey: '',
@@ -13,8 +14,9 @@ export const DEFAULT_AUTH_CONFIG: IAuthConfig = {
   lastUpdated: 0
 };
 
+// Use ModelRegistry.getDefaultModel() for default model
 export const DEFAULT_MODEL_CONFIG: IModelConfig = {
-  selected: 'gpt-5',
+  selected: ModelRegistry.getDefaultModel(),
   provider: 'openai',
   contextWindow: 128000,
   maxOutputTokens: 16384,
@@ -144,7 +146,7 @@ export const DEFAULT_TOOLS_CONFIG: IToolsConfig = {
 };
 
 export const DEFAULT_AGENT_CONFIG: IAgentConfig = {
-  version: '1.0.0',
+  version: '1.1.0',
   model: DEFAULT_MODEL_CONFIG,
   providers: {},
   profiles: {},
@@ -199,9 +201,29 @@ export const DEFAULT_TIMEOUTS = {
  * Merge partial config with defaults
  */
 export function mergeWithDefaults(partial: Partial<IAgentConfig>): IAgentConfig {
+  // Merge providers: ensure all default providers exist, preserve existing API keys
+  const defaultProviders = getDefaultProviders();
+  const mergedProviders: Record<string, any> = { ...defaultProviders };
+
+  if (partial.providers) {
+    Object.entries(partial.providers).forEach(([id, provider]) => {
+      if (mergedProviders[id]) {
+        // Provider exists in defaults, merge with stored values (preserve API keys)
+        mergedProviders[id] = {
+          ...mergedProviders[id],
+          ...provider
+        };
+      } else {
+        // Provider doesn't exist in defaults, keep it anyway
+        mergedProviders[id] = provider;
+      }
+    });
+  }
+
   return {
     ...DEFAULT_AGENT_CONFIG,
     ...partial,
+    providers: mergedProviders,
     model: {
       ...DEFAULT_MODEL_CONFIG,
       ...(partial.model || {})
@@ -247,6 +269,7 @@ export function mergeWithDefaults(partial: Partial<IAgentConfig>): IAgentConfig 
 
 /**
  * Get default provider configurations
+ * Added xAI provider configuration
  */
 export function getDefaultProviders(): Record<string, any> {
   return {
@@ -255,6 +278,14 @@ export function getDefaultProviders(): Record<string, any> {
       name: 'OpenAI',
       apiKey: '',
       baseUrl: 'https://api.openai.com/v1',
+      timeout: DEFAULT_TIMEOUTS.API_REQUEST,
+      retryConfig: DEFAULT_RETRY_CONFIG
+    },
+    xai: {
+      id: 'xai',
+      name: 'xAI',
+      apiKey: '',
+      baseUrl: 'https://api.x.ai/v1',
       timeout: DEFAULT_TIMEOUTS.API_REQUEST,
       retryConfig: DEFAULT_RETRY_CONFIG
     },

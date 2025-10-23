@@ -1,5 +1,5 @@
 /**
- * T038: Configuration validation functions
+ * Configuration validation functions
  */
 
 import type {
@@ -7,7 +7,8 @@ import type {
   IModelConfig,
   IProviderConfig,
   IProfileConfig,
-  IAuthConfig
+  IAuthConfig,
+  IProviderValidationResult
 } from './types';
 import { AuthMode } from '../models/types/Auth.js';
 import {
@@ -461,4 +462,177 @@ export function validateAuthConfig(auth: any): ValidationResult {
   // accountId and planType can be any value or null, no validation needed
 
   return { valid: true };
+}
+
+/**
+ * T006, Model Registry Validation Functions
+ * Feature: 001-multi-model-support
+ */
+
+import { ModelRegistry } from '../models/ModelRegistry';
+import type {
+  ModelValidationResult as RegistryValidationResult,
+  ConfiguredFeatures
+} from '../models/types/ModelRegistry';
+
+/**
+ * T006, Validate model configuration against feature compatibility
+ * Enhanced version that uses ModelRegistry for validation
+ *
+ * @param config Model configuration to validate
+ * @returns Validation result with model registry information
+ */
+export function validateModelConfigWithRegistry(config: IModelConfig): RegistryValidationResult {
+  const features: ConfiguredFeatures = {
+    reasoningEffort: config.reasoningEffort,
+    reasoningSummary: config.reasoningSummary,
+    verbosity: config.verbosity,
+    contextWindow: config.contextWindow,
+    maxOutputTokens: config.maxOutputTokens
+  };
+
+  const result = ModelRegistry.validateCompatibility(config.selected, features);
+
+  // Log validation failures for debugging
+  if (!result.valid) {
+    console.warn('[ModelValidation] Model configuration validation failed:', {
+      model: config.selected,
+      errors: result.errors,
+      warnings: result.warnings,
+      incompatibleFeatures: result.incompatibleFeatures,
+      suggestedActions: result.suggestedActions
+    });
+  } else if (result.warnings && result.warnings.length > 0) {
+    console.info('[ModelValidation] Model configuration has warnings:', {
+      model: config.selected,
+      warnings: result.warnings
+    });
+  }
+
+  return result;
+}
+
+/**
+ * Get default model ID, handling deprecated models
+ *
+ * @param config Agent configuration
+ * @returns Default model ID
+ */
+export function getDefaultModel(config: any): string {
+  const selected = config?.model?.selected;
+
+  if (!selected || selected.trim() === '') {
+    return ModelRegistry.getDefaultModel();
+  }
+
+  const metadata = ModelRegistry.getModel(selected);
+
+  // If selected model is deprecated, try to find an alternative
+  if (metadata?.deprecated) {
+    const alternatives = ModelRegistry.getAvailableModels({
+      excludeDeprecated: true,
+      provider: metadata.provider
+    });
+
+    if (alternatives.length > 0) {
+      console.warn(
+        `Model ${selected} is deprecated. Consider switching to ${alternatives[0].id}.` +
+        (metadata.deprecationMessage ? ` ${metadata.deprecationMessage}` : '')
+      );
+    }
+
+    // Still return the deprecated model - user must manually change it
+    // Per clarification Q1: show warning but continue using deprecated model
+    return selected;
+  }
+
+  // If model doesn't exist in registry, return default
+  if (!metadata) {
+    console.warn(`Unknown model ${selected}, using default`);
+    return ModelRegistry.getDefaultModel();
+  }
+
+  return selected;
+}
+
+/**
+ * API key format validation
+ * Validates API key format for specific provider
+ */
+export function validateApiKeyFormat(apiKey: string, expectedProvider?: string): IProviderValidationResult {
+  const detectedProvider = detectProviderFromKey(apiKey);
+  const warnings: string[] = [];
+  const errors: string[] = [];
+
+  // Check if detected provider matches expected provider
+  if (expectedProvider && detectedProvider !== 'unknown' && detectedProvider !== expectedProvider) {
+    warnings.push(
+      `API key appears to be for ${detectedProvider} but ${expectedProvider} was expected. ` +
+      `Save will proceed, but verify the key is correct.`
+    );
+  }
+
+  // Validate key is not empty
+  if (!apiKey || apiKey.trim() === '') {
+    errors.push('API key cannot be empty');
+    return {
+      isValid: false,
+      detectedProvider: 'unknown',
+      warnings,
+      errors
+    };
+  }
+
+  // Validate key format for detected provider
+  const API_KEY_PATTERNS: Record<string, RegExp> = {
+    openai: /^sk-(proj-|svcacct-|admin-)?[A-Za-z0-9_-]{40,}$/,
+    xai: /^xai-[A-Za-z0-9_-]{40,}$/,
+    anthropic: /^sk-ant-[A-Za-z0-9_-]{40,}$/
+  };
+
+  if (detectedProvider !== 'unknown') {
+    const pattern = API_KEY_PATTERNS[detectedProvider];
+    if (pattern && !pattern.test(apiKey)) {
+      warnings.push(`API key format may be invalid for ${detectedProvider}`);
+    }
+  }
+
+  return {
+    isValid: errors.length === 0,
+    detectedProvider,
+    warnings,
+    errors
+  };
+}
+
+/**
+ * Detect provider from API key format
+ * Returns provider ID based on key pattern
+ */
+export function detectProviderFromKey(apiKey: string): 'openai' | 'xai' | 'anthropic' | 'unknown' {
+  if (!apiKey || apiKey.trim() === '') {
+    return 'unknown';
+  }
+
+  // xAI keys start with 'xai-'
+  if (apiKey.startsWith('xai-')) {
+    return 'xai';
+  }
+
+  // Anthropic keys start with 'sk-ant-'
+  if (apiKey.startsWith('sk-ant-')) {
+    return 'anthropic';
+  }
+
+  // OpenAI keys have T3BlbkFJ signature or start with sk-proj-/sk-svcacct-
+  if (apiKey.includes('T3BlbkFJ') || apiKey.startsWith('sk-proj-') || apiKey.startsWith('sk-svcacct-')) {
+    return 'openai';
+  }
+
+  // Default to OpenAI for keys starting with 'sk-' (backward compatibility)
+  if (apiKey.startsWith('sk-')) {
+    return 'openai';
+  }
+
+  return 'unknown';
 }

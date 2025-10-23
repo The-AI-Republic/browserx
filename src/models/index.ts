@@ -56,3 +56,21 @@ export {
   type RateLimitConfig as RequestQueueRateLimitConfig,
   type QueueMetrics,
 } from './RequestQueue';
+
+/**
+ * Model Registry
+ * Feature: 001-multi-model-support
+ * Centralized model metadata and validation
+ */
+export {
+  ModelRegistry,
+  MODEL_REGISTRY,
+} from './ModelRegistry';
+
+export type {
+  ModelMetadata,
+  ModelFilterOptions,
+  ModelValidationResult,
+  ConfiguredFeatures,
+  SuggestedAction,
+} from './types/ModelRegistry';

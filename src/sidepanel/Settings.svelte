@@ -264,27 +264,16 @@
         headers['Authorization'] = `Bearer ${apiKey}`;
       }
 
-      // Make a minimal test request
-      let testRequest: any;
-      if (isAnthropic) {
-        testRequest = {
-          model: 'claude-3-haiku-20240307',
-          max_tokens: 1,
-          messages: [{ role: 'user', content: 'test' }]
-        };
-      } else if (isXAI) {
-        testRequest = {
-          model: 'grok-beta',
-          max_tokens: 1,
-          messages: [{ role: 'user', content: 'test' }]
-        };
-      } else {
-        testRequest = {
-          model: 'gpt-4o-mini',
-          max_tokens: 1,
-          messages: [{ role: 'user', content: 'test' }]
-        };
-      }
+      // Make a minimal test request using the currently selected model
+      const testRequest: any = isAnthropic ? {
+        model: selectedModel,
+        max_tokens: 1,
+        messages: [{ role: 'user', content: 'test' }]
+      } : {
+        model: selectedModel,
+        max_tokens: 1,
+        messages: [{ role: 'user', content: 'test' }]
+      };
 
       const response = await fetch(baseUrl, {
         method: 'POST',

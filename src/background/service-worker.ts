@@ -120,7 +120,7 @@ function setupMessageHandlers(): void {
       messageCount: session.getMessageCount(),
       turnContext: session.getTurnContext(),
       metadata: session.getMetadata(),
-      isActiveTurn: session.isActiveTurn(), // T039: Include active turn status
+      isActiveTurn: session.isActiveTurn(), // Include active turn status
     };
   });
   

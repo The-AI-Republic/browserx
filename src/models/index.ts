@@ -58,7 +58,7 @@ export {
 } from './RequestQueue';
 
 /**
- * T008: Model Registry
+ * Model Registry
  * Feature: 001-multi-model-support
  * Centralized model metadata and validation
  */

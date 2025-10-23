@@ -591,7 +591,7 @@ export class DOMTool extends BaseTool {
   /**
    * Send DOM capture request to content script with timeout handling
    *
-   * Implements T027: Message sender with timeout and error handling
+   * Implements Message sender with timeout and error handling
    */
   private async sendCaptureRequest(
     tabId: number,

@@ -101,7 +101,7 @@ export class BrowserxAgent {
   }
 
   /**
-   * T028: Handle model configuration changes
+   * Handle model configuration changes
    * Reinitializes session when model changes
    */
   private async handleModelConfigChange(event: IConfigChangeEvent): Promise<void> {
@@ -111,7 +111,7 @@ export class BrowserxAgent {
 
     console.log(`Model configuration changed: ${oldModel} -> ${newModel}`);
 
-    // T028: Reinitialize session when model changes
+    // Reinitialize session when model changes
     if (oldModel !== newModel) {
       try {
         // Shutdown existing session

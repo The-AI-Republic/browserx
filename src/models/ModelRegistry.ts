@@ -18,8 +18,8 @@ import type {
 
 /**
  * Static registry of all supported models
- * T004: Implementation of MODEL_REGISTRY constant
- * T018: Added grok-4-fast-reasoning model
+ * Implementation of MODEL_REGISTRY constant
+ * Added grok-4-fast-reasoning model
  */
 export const MODEL_REGISTRY: Readonly<Record<string, ModelMetadata>> = {
   'gpt-5': {
@@ -53,7 +53,7 @@ export const MODEL_REGISTRY: Readonly<Record<string, ModelMetadata>> = {
 
 /**
  * ModelRegistry class with static methods
- * T005: Implementation of ModelRegistry class
+ * Implementation of ModelRegistry class
  */
 export class ModelRegistry {
   /**

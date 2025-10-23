@@ -1,5 +1,5 @@
 /**
- * T033-T036, T043: Main centralized agent configuration class
+ * T033-T036, Main centralized agent configuration class
  */
 
 import type {
@@ -221,7 +221,7 @@ export class AgentConfig implements IConfigService {
     return newModel;
   }
 
-  // T035: Provider management
+  // Provider management
   getProviders(): Record<string, IProviderConfig> {
     this.ensureInitialized();
     return { ...this.currentConfig.providers };
@@ -296,7 +296,7 @@ export class AgentConfig implements IConfigService {
   }
 
   /**
-   * T012: Set API key for a specific provider
+   * Set API key for a specific provider
    * @param providerId - Provider identifier (e.g., 'openai', 'xai', 'anthropic')
    * @param apiKey - Unencrypted API key (will be encrypted before storage)
    * @returns Provider configuration with encrypted API key
@@ -330,7 +330,7 @@ export class AgentConfig implements IConfigService {
   }
 
   /**
-   * T013: Get decrypted API key for a specific provider
+   * Get decrypted API key for a specific provider
    * @param providerId - Provider identifier (e.g., 'openai', 'xai', 'anthropic')
    * @returns Decrypted API key or null if not configured
    * @remarks Includes backward compatibility fallback to auth.apiKey
@@ -351,7 +351,7 @@ export class AgentConfig implements IConfigService {
       return decryptApiKey(provider.apiKey);
     }
 
-    // T013: Backward compatibility fallback to auth.apiKey
+    // Backward compatibility fallback to auth.apiKey
     if (this.currentConfig.auth?.apiKey) {
       const decryptedKey = decryptApiKey(this.currentConfig.auth.apiKey);
       if (decryptedKey) {
@@ -366,7 +366,7 @@ export class AgentConfig implements IConfigService {
   }
 
   /**
-   * T014: Get provider configuration by ID
+   * Get provider configuration by ID
    * @param id - Provider identifier
    * @returns Provider configuration or null if not found
    * @example
@@ -381,7 +381,7 @@ export class AgentConfig implements IConfigService {
   }
 
   /**
-   * T015: Get list of providers with configured API keys
+   * Get list of providers with configured API keys
    * @returns Array of provider IDs that have API keys configured
    * @example
    * const configured = agentConfig.getConfiguredProviders();
@@ -395,7 +395,7 @@ export class AgentConfig implements IConfigService {
   }
 
   /**
-   * T016: Switch active provider
+   * Switch active provider
    * @param providerId - Provider identifier to switch to
    * @throws Error if provider not found or no API key configured
    * @remarks Conversation blocking should be handled in UI layer
@@ -417,7 +417,7 @@ export class AgentConfig implements IConfigService {
       throw new Error(`No API key configured for provider: ${providerId}`);
     }
 
-    // T016: Check for active conversation (will be implemented in UI layer)
+    // Check for active conversation (will be implemented in UI layer)
     // For now, just update the provider
 
     const oldModel = this.currentConfig.model;
@@ -428,7 +428,7 @@ export class AgentConfig implements IConfigService {
   }
 
   /**
-   * T043: Get provider status information
+   * Get provider status information
    * @param providerId - Provider identifier
    * @returns Provider status with configuration and active state
    * @example
@@ -455,7 +455,7 @@ export class AgentConfig implements IConfigService {
   }
 
   /**
-   * T008: Detect provider from API key format
+   * Detect provider from API key format
    * @param apiKey - Unencrypted API key
    * @returns Provider identifier or 'unknown' if cannot be detected
    * @remarks Uses regex patterns to identify provider from key format
@@ -532,7 +532,7 @@ export class AgentConfig implements IConfigService {
   }
 
 
-  // T036: Profile management
+  // Profile management
   getProfiles(): Record<string, IProfileConfig> {
     this.ensureInitialized();
     return { ...(this.currentConfig.profiles || {}) };
@@ -771,7 +771,7 @@ export class AgentConfig implements IConfigService {
     this.emitChangeEvent('tools' as any, oldConfig, this.currentConfig.tools.perToolConfig[toolName]);
   }
 
-  // T043: Event emitter functionality
+  // Event emitter functionality
   on(event: 'config-changed', handler: (e: IConfigChangeEvent) => void): void {
     if (!this.eventHandlers.has(event)) {
       this.eventHandlers.set(event, new Set());

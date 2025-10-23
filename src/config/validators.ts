@@ -1,5 +1,5 @@
 /**
- * T038: Configuration validation functions
+ * Configuration validation functions
  */
 
 import type {
@@ -465,7 +465,7 @@ export function validateAuthConfig(auth: any): ValidationResult {
 }
 
 /**
- * T006, T007: Model Registry Validation Functions
+ * T006, Model Registry Validation Functions
  * Feature: 001-multi-model-support
  */
 
@@ -476,7 +476,7 @@ import type {
 } from '../models/types/ModelRegistry';
 
 /**
- * T006, T045: Validate model configuration against feature compatibility
+ * T006, Validate model configuration against feature compatibility
  * Enhanced version that uses ModelRegistry for validation
  *
  * @param config Model configuration to validate
@@ -493,7 +493,7 @@ export function validateModelConfigWithRegistry(config: IModelConfig): RegistryV
 
   const result = ModelRegistry.validateCompatibility(config.selected, features);
 
-  // T045: Log validation failures for debugging
+  // Log validation failures for debugging
   if (!result.valid) {
     console.warn('[ModelValidation] Model configuration validation failed:', {
       model: config.selected,
@@ -513,7 +513,7 @@ export function validateModelConfigWithRegistry(config: IModelConfig): RegistryV
 }
 
 /**
- * T007: Get default model ID, handling deprecated models
+ * Get default model ID, handling deprecated models
  *
  * @param config Agent configuration
  * @returns Default model ID
@@ -556,7 +556,7 @@ export function getDefaultModel(config: any): string {
 }
 
 /**
- * T009: API key format validation
+ * API key format validation
  * Validates API key format for specific provider
  */
 export function validateApiKeyFormat(apiKey: string, expectedProvider?: string): IProviderValidationResult {
@@ -606,7 +606,7 @@ export function validateApiKeyFormat(apiKey: string, expectedProvider?: string):
 }
 
 /**
- * T008: Detect provider from API key format
+ * Detect provider from API key format
  * Returns provider ID based on key pattern
  */
 export function detectProviderFromKey(apiKey: string): 'openai' | 'xai' | 'anthropic' | 'unknown' {

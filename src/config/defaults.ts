@@ -1,5 +1,5 @@
 /**
- * T037: Default centralized agent configuration values
+ * Default centralized agent configuration values
  */
 
 import type { IAgentConfig, IModelConfig, IUserPreferences, ICacheSettings, IExtensionSettings, IPermissionSettings, IToolsConfig, IStorageConfig, IAuthConfig } from './types';
@@ -14,7 +14,7 @@ export const DEFAULT_AUTH_CONFIG: IAuthConfig = {
   lastUpdated: 0
 };
 
-// T029: Use ModelRegistry.getDefaultModel() for default model
+// Use ModelRegistry.getDefaultModel() for default model
 export const DEFAULT_MODEL_CONFIG: IModelConfig = {
   selected: ModelRegistry.getDefaultModel(),
   provider: 'openai',
@@ -269,7 +269,7 @@ export function mergeWithDefaults(partial: Partial<IAgentConfig>): IAgentConfig 
 
 /**
  * Get default provider configurations
- * T019: Added xAI provider configuration
+ * Added xAI provider configuration
  */
 export function getDefaultProviders(): Record<string, any> {
   return {

@@ -11,7 +11,7 @@ import type { AgentConfig } from '../config/AgentConfig';
 
 /**
  * Supported model providers
- * T018, T019: Added xAI and Anthropic provider support
+ * T018, Added xAI and Anthropic provider support
  */
 export type ModelProvider = 'openai' | 'xai' | 'anthropic';
 
@@ -43,7 +43,7 @@ const STORAGE_KEYS = {
 
 /**
  * Model name to provider mapping
- * T018: Added support for xAI Grok models
+ * Added support for xAI Grok models
  */
 const MODEL_PROVIDER_MAP: Record<string, ModelProvider> = {
   // OpenAI models
@@ -178,7 +178,7 @@ export class ModelClientFactory {
 
   /**
    * Get the provider for a given model name
-   * T018: Enhanced to check ModelRegistry for multi-provider support
+   * Enhanced to check ModelRegistry for multi-provider support
    * @param model The model name
    * @returns The provider for the model
    */
@@ -327,13 +327,13 @@ export class ModelClientFactory {
   }
 
   /**
-   * T032, T033: Load configuration for a provider from Chrome storage
+   * T032, Load configuration for a provider from Chrome storage
    * @param provider The provider
    * @returns Promise resolving to the client configuration
    * Note: API key can be null - validation happens when making API requests
    */
   private async loadConfigForProvider(provider: ModelProvider): Promise<ModelClientConfig> {
-    // T032: Get provider-specific API key
+    // Get provider-specific API key
     let apiKey: string | null = null;
     if (this.config) {
       const modelConfig = this.config.getModelConfig();
@@ -351,7 +351,7 @@ export class ModelClientFactory {
       options: {},
     };
 
-    // T033: Load provider-specific base URL
+    // Load provider-specific base URL
     if (this.config) {
       const modelConfig = this.config.getModelConfig();
       const providerConfig = this.config.getProvider(modelConfig.provider);
@@ -389,12 +389,12 @@ export class ModelClientFactory {
   }
 
   /**
-   * T032, T033: Instantiate a client with the given configuration
+   * T032, Instantiate a client with the given configuration
    * @param config The client configuration
    * @returns Model client instance
    */
   private instantiateClient(config: ModelClientConfig): ModelClient {
-    // T033: Get provider name from config if available
+    // Get provider name from config if available
     let providerName = config.provider;
     let baseUrl = config.options?.baseUrl;
 
@@ -402,7 +402,7 @@ export class ModelClientFactory {
       const modelConfig = this.config.getModelConfig();
       providerName = modelConfig.provider as ModelProvider;
 
-      // T033: Use provider-specific base URL from model metadata if not in config
+      // Use provider-specific base URL from model metadata if not in config
       if (!baseUrl) {
         const modelMetadata = ModelRegistry.getModel(modelConfig.selected);
         baseUrl = modelMetadata?.baseUrl;
@@ -423,7 +423,7 @@ export class ModelClientFactory {
           requires_openai_auth: true,
         };
 
-        // T024: Use selected model from config instead of hardcoded 'gpt-5'
+        // Use selected model from config instead of hardcoded 'gpt-5'
         const selectedModel = this.getSelectedModel();
         const modelFamily = {
           family: selectedModel,
@@ -483,7 +483,7 @@ export class ModelClientFactory {
   }
 
   /**
-   * T024: Get selected model from config
+   * Get selected model from config
    */
   getSelectedModel(): string {
     if (this.config) {
@@ -494,7 +494,7 @@ export class ModelClientFactory {
   }
 
   /**
-   * T032: Get API key from config for a provider
+   * Get API key from config for a provider
    */
   async getApiKey(provider: string): Promise<string | null> {
     if (!this.config) {
@@ -505,7 +505,7 @@ export class ModelClientFactory {
   }
 
   /**
-   * T033: Get base URL from config for a provider
+   * Get base URL from config for a provider
    */
   getBaseUrl(provider: string): string | undefined {
     if (!this.config) {

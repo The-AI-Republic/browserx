@@ -479,14 +479,14 @@ describe('Integration Tests - Rate Limiting & Token Tracking', () => {
 });
 
 /**
- * T009: Rate Limit Parsing Integration Tests
+ * Rate Limit Parsing Integration Tests
  * Reference: tasks.md T009
  * Rust Reference: browserx-rs/core/src/client.rs:453-495
  *
  * These tests verify parseRateLimitSnapshot() method specifically for
  * OpenAIResponsesClient matching Rust behavior exactly.
  */
-describe('T009: Rate Limit Parsing Integration - OpenAIResponsesClient', () => {
+describe('Rate Limit Parsing Integration - OpenAIResponsesClient', () => {
   let client: any;
 
   beforeEach(async () => {

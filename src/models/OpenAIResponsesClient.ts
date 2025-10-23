@@ -171,7 +171,7 @@ export class OpenAIResponsesClient extends ModelClient {
     this.currentModel = model;
   }
 
-  // T025: Use ModelRegistry for dynamic context window lookup
+  // Use ModelRegistry for dynamic context window lookup
   getModelContextWindow(): number | undefined {
     const modelMetadata = ModelRegistry.getModel(this.currentModel);
     return modelMetadata?.contextWindow;
@@ -242,7 +242,7 @@ export class OpenAIResponsesClient extends ModelClient {
     const include: string[] = reasoning ? ['reasoning.encrypted_content'] : [];
     const azureWorkaround = (this.provider.base_url && this.provider.base_url.indexOf('azure') !== -1) || false;
 
-    // T031: Set store: false for xAI provider (required for images)
+    // Set store: false for xAI provider (required for images)
     const storeValue = this.provider.name === 'xai' ? false : azureWorkaround;
 
     const payload: ResponsesApiRequest = {

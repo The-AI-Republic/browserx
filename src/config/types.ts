@@ -255,7 +255,7 @@ export interface IConfigFactory {
   validateConfig(config: any): config is IAgentConfig;
 }
 
-// T007: Multi-provider validation result types
+// Multi-provider validation result types
 export interface IProviderValidationResult {
   isValid: boolean;
   detectedProvider: 'openai' | 'xai' | 'anthropic' | 'unknown';

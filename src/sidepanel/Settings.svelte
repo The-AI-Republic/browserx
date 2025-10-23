@@ -221,13 +221,17 @@
       return;
     }
 
-    // Validate format
+    // Validate format based on current provider
     const isValidFormat =
       (apiKey.startsWith('sk-') && apiKey.length >= 40) ||
-      (apiKey.startsWith('sk-ant-') && apiKey.length >= 40);
+      (apiKey.startsWith('sk-ant-') && apiKey.length >= 40) ||
+      (apiKey.startsWith('xai-') && apiKey.length >= 40);
 
     if (!isValidFormat) {
-      showMessage('Invalid API key format', 'error');
+      showMessage('Invalid API key format. Expected format: ' +
+        (currentProvider === 'openai' ? 'sk-...' :
+         currentProvider === 'xai' ? 'xai-...' :
+         currentProvider === 'anthropic' ? 'sk-ant-...' : 'provider-specific'), 'error');
       testResult = { valid: false, error: 'Invalid format' };
       return;
     }
@@ -236,11 +240,18 @@
       isTesting = true;
       testResult = null;
 
-      // Determine provider based on key format
-      const isAnthropic = apiKey.startsWith('sk-ant-');
-      const baseUrl = isAnthropic
-        ? 'https://api.anthropic.com/v1/messages'
-        : 'https://api.openai.com/v1/chat/completions';
+      // Determine provider and endpoint
+      const isAnthropic = apiKey.startsWith('sk-ant-') || currentProvider === 'anthropic';
+      const isXAI = apiKey.startsWith('xai-') || currentProvider === 'xai';
+
+      let baseUrl: string;
+      if (isAnthropic) {
+        baseUrl = 'https://api.anthropic.com/v1/messages';
+      } else if (isXAI) {
+        baseUrl = 'https://api.x.ai/v1/chat/completions';
+      } else {
+        baseUrl = 'https://api.openai.com/v1/chat/completions';
+      }
 
       const headers: Record<string, string> = {
         'Content-Type': 'application/json'
@@ -254,15 +265,26 @@
       }
 
       // Make a minimal test request
-      const testRequest = isAnthropic ? {
-        model: 'claude-3-haiku-20240307',
-        max_tokens: 1,
-        messages: [{ role: 'user', content: 'test' }]
-      } : {
-        model: 'gpt-4o-mini',
-        max_tokens: 1,
-        messages: [{ role: 'user', content: 'test' }]
-      };
+      let testRequest: any;
+      if (isAnthropic) {
+        testRequest = {
+          model: 'claude-3-haiku-20240307',
+          max_tokens: 1,
+          messages: [{ role: 'user', content: 'test' }]
+        };
+      } else if (isXAI) {
+        testRequest = {
+          model: 'grok-beta',
+          max_tokens: 1,
+          messages: [{ role: 'user', content: 'test' }]
+        };
+      } else {
+        testRequest = {
+          model: 'gpt-4o-mini',
+          max_tokens: 1,
+          messages: [{ role: 'user', content: 'test' }]
+        };
+      }
 
       const response = await fetch(baseUrl, {
         method: 'POST',

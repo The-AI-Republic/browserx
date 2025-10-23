@@ -164,6 +164,8 @@ export class Session {
    */
   setTurnContext(context: TurnContext): void {
     this.turnContext = context;
+    // T083: Sync tabId to ensure turn-to-turn consistency
+    this.syncTurnTabId();
   }
 
   /**
@@ -180,6 +182,22 @@ export class Session {
    */
   getTurnContext(): TurnContext {
     return this.turnContext;
+  }
+
+  /**
+   * T083: Sync turn context tabId with session state for turn-to-turn consistency
+   * Should be called at the start of each turn to ensure tabId doesn't drift
+   */
+  private syncTurnTabId(): void {
+    if (this.turnContext && typeof this.turnContext.setTabId === 'function') {
+      const sessionTabId = this.sessionState.getTabId();
+      const turnTabId = this.turnContext.getTabId();
+
+      if (turnTabId !== sessionTabId) {
+        console.log(`[Session] Syncing turn tabId from ${turnTabId} to ${sessionTabId}`);
+        this.turnContext.setTabId(sessionTabId);
+      }
+    }
   }
 
   /**

@@ -72,6 +72,7 @@ export class TabBindingManager {
 
   /**
    * T007: Bind a tab to a session (last-write-wins logic)
+   * T085: Notify previous session when it loses tab binding
    */
   async bindTabToSession(sessionId: string, tabId: number, tabInfo: TabInfo): Promise<void> {
     // Check if tab already bound to a different session
@@ -80,6 +81,9 @@ export class TabBindingManager {
       // Last-write-wins: unbind previous session
       this.sessionToTab.delete(existingSessionId);
       console.log(`[TabBindingManager] Tab ${tabId} rebound from session ${existingSessionId} to ${sessionId}`);
+
+      // T085: Notify the previous session that it lost its tab binding
+      this.notifyTabClosed(existingSessionId, tabId);
     }
 
     // Unbind session's previous tab if any

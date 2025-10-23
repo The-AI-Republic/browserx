@@ -157,24 +157,26 @@ export class ModelRegistry {
     }
 
     // Check reasoning effort compatibility
+    // NOTE: Missing reasoning support is a WARNING not an ERROR - allow model selection
     if (features.reasoningEffort && !model.supportsReasoning) {
-      errors.push(`Model ${modelId} does not support reasoning features`);
+      warnings.push(`Model ${modelId} does not support reasoning features - reasoning effort will be ignored`);
       incompatibleFeatures.push('reasoningEffort');
       suggestedActions.push({
         action: 'disable_feature',
         feature: 'reasoningEffort',
-        description: 'Disable reasoning effort setting to use this model'
+        description: 'Reasoning effort setting will be ignored for this model'
       });
     }
 
     // Check verbosity compatibility
+    // NOTE: Missing verbosity support is a WARNING not an ERROR - allow model selection
     if (features.verbosity && !model.supportsVerbosity) {
-      errors.push(`Model ${modelId} does not support verbosity settings`);
+      warnings.push(`Model ${modelId} does not support verbosity settings - verbosity will be ignored`);
       incompatibleFeatures.push('verbosity');
       suggestedActions.push({
         action: 'disable_feature',
         feature: 'verbosity',
-        description: 'Disable verbosity setting to use this model'
+        description: 'Verbosity setting will be ignored for this model'
       });
     }
 

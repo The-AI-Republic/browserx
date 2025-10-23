@@ -147,8 +147,13 @@ export class NavigationTool extends BaseTool {
 
     this.log('debug', `Executing navigation action: ${request.action}`, request);
 
-    // Get target tab
-    const targetTab = request.tabId ? await this.validateTabId(request.tabId) : await this.getActiveTab();
+    // Get target tab - use session-aware validation if sessionId provided
+    let targetTab: chrome.tabs.Tab;
+    if (request.sessionId) {
+      targetTab = await this.validateSessionTab(request.sessionId);
+    } else {
+      targetTab = request.tabId ? await this.validateTabId(request.tabId) : await this.getActiveTab();
+    }
 
     switch (request.action) {
       case 'navigate':

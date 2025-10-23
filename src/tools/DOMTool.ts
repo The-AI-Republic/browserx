@@ -140,10 +140,15 @@ export class DOMTool extends BaseTool {
    * instead of the legacy full DOM tree capture.
    */
   private async captureInteractionContent(request: DOMCaptureRequest): Promise<DOMCaptureResponse> {
-    // Get target tab
-    const targetTab = request.tab_id
-      ? await this.validateTabId(request.tab_id)
-      : await this.getActiveTab();
+    // Get target tab - use session-aware validation if sessionId provided
+    let targetTab: chrome.tabs.Tab;
+    if (request.sessionId) {
+      targetTab = await this.validateSessionTab(request.sessionId);
+    } else {
+      targetTab = request.tab_id
+        ? await this.validateTabId(request.tab_id)
+        : await this.getActiveTab();
+    }
 
     const tabId = targetTab.id!;
 

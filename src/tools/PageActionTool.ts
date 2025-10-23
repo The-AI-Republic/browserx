@@ -121,8 +121,13 @@ export class PageActionTool extends BaseTool {
     const typedRequest = request as PageActionToolRequest;
     const { action, selectorMap, tabId } = typedRequest;
 
-    // Get target tab
-    const targetTab = tabId ? await this.validateTabId(tabId) : await this.getActiveTab();
+    // Get target tab - use session-aware validation if sessionId provided
+    let targetTab: chrome.tabs.Tab;
+    if (request.sessionId) {
+      targetTab = await this.validateSessionTab(request.sessionId);
+    } else {
+      targetTab = tabId ? await this.validateTabId(tabId) : await this.getActiveTab();
+    }
 
     if (!targetTab.id) {
       throw new Error('Tab ID not available');

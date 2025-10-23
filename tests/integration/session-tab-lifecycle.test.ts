@@ -401,4 +401,177 @@ describe('Session Tab Lifecycle Integration Tests', () => {
       expect(bindingManager.getSessionForTab(123)).toBe('session-2');
     });
   });
+
+  describe('US4: Multi-Operation Tab Consistency', () => {
+    it('should use same tabId for all operations in a session', async () => {
+      const bindingManager = TabBindingManager.getInstance();
+
+      const mockTab = {
+        id: 999,
+        url: 'https://example.com',
+        title: 'Example',
+        active: true,
+        pinned: false,
+        windowId: 1,
+        status: 'complete',
+        index: 0,
+      };
+
+      chromeMock.tabs.get.mockResolvedValue(mockTab);
+
+      // Bind tab to session
+      await bindingManager.bindTabToSession('session-multi-op', 999, mockTab as any);
+
+      // Simulate multiple sequential operations
+      const operations = [
+        'navigate',
+        'click_element',
+        'fill_form',
+        'capture_screenshot',
+        'scroll',
+      ];
+
+      const tabIdsUsed: number[] = [];
+
+      for (const operation of operations) {
+        // Each operation should query the binding
+        const tabId = bindingManager.getTabForSession('session-multi-op');
+        tabIdsUsed.push(tabId);
+
+        // Validate tab before operation
+        const validation = await bindingManager.validateTab(tabId);
+        expect(validation.status).toBe('valid');
+      }
+
+      // All operations should have used the same tabId
+      expect(tabIdsUsed).toEqual([999, 999, 999, 999, 999]);
+      expect(new Set(tabIdsUsed).size).toBe(1); // Only one unique tabId
+
+      // Final verification
+      expect(bindingManager.getTabForSession('session-multi-op')).toBe(999);
+    });
+
+    it('should maintain tab consistency across turn boundaries', async () => {
+      const bindingManager = TabBindingManager.getInstance();
+
+      const mockTab = {
+        id: 777,
+        url: 'https://example.com',
+        title: 'Example',
+        active: true,
+        pinned: false,
+        windowId: 1,
+        status: 'complete',
+        index: 0,
+      };
+
+      chromeMock.tabs.get.mockResolvedValue(mockTab);
+
+      // Bind tab
+      await bindingManager.bindTabToSession('session-turns', 777, mockTab as any);
+
+      // Simulate multiple turns (conversation turns)
+      for (let turn = 1; turn <= 5; turn++) {
+        // Start of turn
+        const tabIdAtStart = bindingManager.getTabForSession('session-turns');
+        expect(tabIdAtStart).toBe(777);
+
+        // Operation during turn
+        const validation = await bindingManager.validateTab(tabIdAtStart);
+        expect(validation.status).toBe('valid');
+
+        // End of turn - verify tabId hasn't changed
+        const tabIdAtEnd = bindingManager.getTabForSession('session-turns');
+        expect(tabIdAtEnd).toBe(tabIdAtStart);
+      }
+
+      // After all turns, tab should still be the same
+      expect(bindingManager.getTabForSession('session-turns')).toBe(777);
+    });
+
+    it('should prevent tab proliferation (multiple tabs for one session)', async () => {
+      const bindingManager = TabBindingManager.getInstance();
+
+      const tab1 = {
+        id: 100,
+        url: 'https://example.com',
+        title: 'Tab 1',
+        active: true,
+        pinned: false,
+        windowId: 1,
+        status: 'complete',
+        index: 0,
+      };
+
+      const tab2 = {
+        id: 200,
+        url: 'https://example.com',
+        title: 'Tab 2',
+        active: true,
+        pinned: false,
+        windowId: 1,
+        status: 'complete',
+        index: 1,
+      };
+
+      chromeMock.tabs.get.mockImplementation((tabId: number) => {
+        if (tabId === 100) return Promise.resolve(tab1);
+        if (tabId === 200) return Promise.resolve(tab2);
+        return Promise.reject(new Error(`No tab with id: ${tabId}`));
+      });
+
+      // Bind first tab
+      await bindingManager.bindTabToSession('session-single-tab', 100, tab1 as any);
+      expect(bindingManager.getTabForSession('session-single-tab')).toBe(100);
+
+      // Attempt to bind second tab (last-write-wins)
+      await bindingManager.bindTabToSession('session-single-tab', 200, tab2 as any);
+
+      // Session should now be bound to second tab (unbinding first)
+      expect(bindingManager.getTabForSession('session-single-tab')).toBe(200);
+      expect(bindingManager.getSessionForTab(100)).toBeUndefined();
+      expect(bindingManager.getSessionForTab(200)).toBe('session-single-tab');
+
+      // Verify only one tab is bound to the session
+      const allBindings = [100, 200].map(tabId =>
+        bindingManager.getSessionForTab(tabId)
+      ).filter(sessionId => sessionId === 'session-single-tab');
+
+      expect(allBindings.length).toBe(1); // Only one binding
+    });
+
+    it('should maintain consistency during rapid operations', async () => {
+      const bindingManager = TabBindingManager.getInstance();
+
+      const mockTab = {
+        id: 555,
+        url: 'https://example.com',
+        title: 'Rapid Operations',
+        active: true,
+        pinned: false,
+        windowId: 1,
+        status: 'complete',
+        index: 0,
+      };
+
+      chromeMock.tabs.get.mockResolvedValue(mockTab);
+
+      // Bind tab
+      await bindingManager.bindTabToSession('session-rapid', 555, mockTab as any);
+
+      // Simulate rapid concurrent-like operations
+      const rapidOps = Array.from({ length: 20 }, (_, i) => i);
+      const tabIdPromises = rapidOps.map(async () => {
+        const tabId = bindingManager.getTabForSession('session-rapid');
+        await bindingManager.validateTab(tabId);
+        return tabId;
+      });
+
+      const tabIds = await Promise.all(tabIdPromises);
+
+      // All should return the same tabId
+      expect(tabIds.every(id => id === 555)).toBe(true);
+      expect(new Set(tabIds).size).toBe(1);
+    });
+  });
 });

@@ -7,6 +7,7 @@
   import TerminalContainer from './components/TerminalContainer.svelte';
   import TerminalMessage from './components/TerminalMessage.svelte';
   import TerminalInput from './components/TerminalInput.svelte';
+  import TabContext from './components/TabContext.svelte';
   import Settings from './Settings.svelte';
   import EventDisplay from './components/event_display/EventDisplay.svelte';
   import { EventProcessor } from './components/event_display/EventProcessor';
@@ -24,6 +25,7 @@
   let showNewConvTooltip = false;
   let showWelcome = false;
   let scrollContainer: HTMLDivElement;
+  let currentTabId: number = -1; // Track current session's bound tab
   $: showWelcome =
     !isProcessing && processedEvents.length === 0 && messages.length === 0;
 
@@ -42,6 +44,8 @@
     try {
       await router.requestSessionReset();
       console.log('Session reset on side panel open');
+      // Reset tabId when session resets
+      currentTabId = -1;
     } catch (error) {
       console.error('Failed to reset session:', error);
     }
@@ -54,19 +58,62 @@
 
     router.on(MessageType.STATE_UPDATE, (message) => {
       console.log('State update:', message.payload);
+      // Update tabId if available in state update
+      if (message.payload && 'tabId' in message.payload) {
+        currentTabId = message.payload.tabId;
+      }
     });
 
     // Check connection
     checkConnection();
 
-    // Periodic connection check
-    const interval = setInterval(checkConnection, 5000);
+    // Fetch current session's tabId from storage
+    fetchCurrentTabId();
+
+    // Periodic connection check and tabId sync
+    const interval = setInterval(() => {
+      checkConnection();
+      fetchCurrentTabId();
+    }, 5000);
 
     return () => {
       clearInterval(interval);
       router?.cleanup();
     };
   });
+
+  /**
+   * Fetch the current session's tabId from TabBindingManager via storage
+   */
+  async function fetchCurrentTabId() {
+    try {
+      // Query chrome.storage.local for session state
+      // The session ID is typically 'default-session' or similar
+      // For now, we'll use a heuristic: get all bindings and find the most recent one
+      const result = await chrome.storage.local.get(['tabBindings', 'currentSessionId']);
+
+      if (result.currentSessionId && result.tabBindings) {
+        const bindings = result.tabBindings;
+        // Find binding for current session
+        for (const [tabIdStr, binding] of Object.entries(bindings)) {
+          if (binding && typeof binding === 'object' && 'sessionId' in binding) {
+            if ((binding as any).sessionId === result.currentSessionId) {
+              currentTabId = parseInt(tabIdStr, 10);
+              return;
+            }
+          }
+        }
+      }
+
+      // If we have bindings but no match, check if there's only one binding (likely the current session)
+      if (result.tabBindings && Object.keys(result.tabBindings).length === 1) {
+        const tabIdStr = Object.keys(result.tabBindings)[0];
+        currentTabId = parseInt(tabIdStr, 10);
+      }
+    } catch (error) {
+      console.error('[TabContext] Failed to fetch current tabId:', error);
+    }
+  }
 
   async function checkConnection() {
     try {
@@ -202,6 +249,9 @@
     inputText = '';
     isProcessing = false;
 
+    // Reset tab context
+    currentTabId = -1;
+
     // Reset event processor
     eventProcessor.reset();
 
@@ -273,6 +323,11 @@
 
     <!-- Input area -->
     <div class="input-area">
+      <!-- Tab Context Display -->
+      <div class="tab-context-container mb-2">
+        <TabContext tabId={currentTabId} />
+      </div>
+
       <div class="terminal-prompt flex items-center">
         <span class="text-term-dim-green mr-2">&gt;</span>
         <TerminalInput
@@ -367,6 +422,13 @@
     background: var(--color-term-bg);
     position: relative;
     z-index: 10;
+  }
+
+  .tab-context-container {
+    display: flex;
+    justify-content: flex-start;
+    align-items: center;
+    margin-bottom: 0.5rem;
   }
 
   .function-menu {

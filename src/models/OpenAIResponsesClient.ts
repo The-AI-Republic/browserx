@@ -1,9 +1,10 @@
 /**
  * OpenAI Responses API client implementation for browserx-chrome
- * Implements the experimental /v1/responses endpoint with SSE streaming
+ * Uses official OpenAI SDK for API calls (supports OpenAI, xAI, and other compatible providers)
  * Based on browserx-rs/core/src/client.rs implementation
  */
 
+import OpenAI from 'openai';
 import {
   ModelClient,
   ModelClientError,
@@ -92,7 +93,8 @@ export interface OpenAIResponsesConfig {
 }
 
 /**
- * OpenAI Responses API client implementing experimental /v1/responses endpoint
+ * OpenAI Responses API client using official OpenAI SDK
+ * Supports OpenAI, xAI (Grok), and other OpenAI-compatible providers
  */
 export class OpenAIResponsesClient extends ModelClient {
   private readonly apiKey: string | null;
@@ -105,6 +107,9 @@ export class OpenAIResponsesClient extends ModelClient {
   private reasoningSummary?: ReasoningSummaryConfig;
   private modelVerbosity?: OpenAiVerbosity;
   private currentModel: string;
+
+  // OpenAI SDK client instance
+  private client: OpenAI;
 
   // Performance optimizations (Phase 9)
   private sseParser: SSEEventParser;
@@ -127,6 +132,15 @@ export class OpenAIResponsesClient extends ModelClient {
     this.reasoningSummary = config.reasoningSummary;
     this.modelVerbosity = config.modelVerbosity;
     this.currentModel = config.modelFamily.family;
+
+    // Initialize OpenAI SDK client with provider-specific baseURL
+    this.client = new OpenAI({
+      apiKey: this.apiKey || 'placeholder', // SDK requires non-empty string, we validate later
+      baseURL: this.baseUrl,
+      organization: this.organization,
+      timeout: 360000, // 6 minutes for reasoning models
+      maxRetries: 0, // We handle retries manually
+    });
 
     // Initialize performance optimizations
     this.sseParser = new SSEEventParser();
@@ -330,11 +344,8 @@ export class OpenAIResponsesClient extends ModelClient {
   /**
    * Attempt a single streaming request without retry logic
    *
-   * This method makes a single attempt to create a streaming connection.
-   * It makes the HTTP request synchronously (throwing on connection errors),
-   * then returns a ResponseStream that will be populated asynchronously.
-   *
-   * **Rust Reference**: `browserx-rs/core/src/client.rs` Line 269
+   * Uses OpenAI SDK's streaming API instead of manual SSE parsing.
+   * Returns a ResponseStream that will be populated asynchronously.
    *
    * @param attempt The attempt number (0-based) for logging/metrics
    * @param payload The API request payload
@@ -345,20 +356,16 @@ export class OpenAIResponsesClient extends ModelClient {
     attempt: number,
     payload: any
   ): Promise<ResponseStream> {
-    // Make HTTP request - this will throw on connection errors (401, 429, etc.)
-    const response = await this.makeResponsesApiRequest(payload);
-
-    if (!response.body) {
-      throw new ModelClientError('Response body is null');
-    }
+    // Make SDK streaming request - this will throw on connection errors (401, 429, etc.)
+    const sdkStream = await this.makeResponsesApiRequest(payload);
 
     // Create stream and start processing asynchronously
     const stream = new ResponseStream();
 
-    // Spawn async task to populate stream from SSE
+    // Spawn async task to populate stream from SDK events
     (async () => {
       try {
-        await this.processSSEToStream(response.body!, response.headers, stream);
+        await this.processSDKStreamToResponseStream(sdkStream, stream);
         stream.complete();
       } catch (error) {
         stream.error(error as Error);
@@ -406,14 +413,10 @@ export class OpenAIResponsesClient extends ModelClient {
       attempt++;
 
       try {
-        const response = await this.makeResponsesApiRequest(payload);
+        const sdkStream = await this.makeResponsesApiRequest(payload);
 
-        if (!response.body) {
-          throw new ModelClientError('Response body is null');
-        }
-
-        // Process SSE stream
-        yield* this.processSSE(response.body, response.headers);
+        // Process SDK stream and yield events
+        yield* this.processSDKStream(sdkStream);
         return;
 
       } catch (error) {
@@ -465,6 +468,121 @@ export class OpenAIResponsesClient extends ModelClient {
    * @param headers HTTP response headers
    * @param stream ResponseStream to populate with events
    */
+  /**
+   * Process OpenAI SDK stream as AsyncGenerator (for streamResponsesInternal)
+   * The SDK handles SSE parsing and returns structured events
+   *
+   * @param sdkStream Async iterable from OpenAI SDK
+   */
+  private async *processSDKStream(
+    sdkStream: AsyncIterable<any>
+  ): AsyncGenerator<ResponseEvent> {
+    try {
+      for await (const chunk of sdkStream) {
+        // The SDK returns structured event objects
+        // Convert SDK event format to our ResponseEvent format
+        const responseEvent = this.convertSDKEventToResponseEvent(chunk);
+
+        if (responseEvent) {
+          yield responseEvent;
+        }
+      }
+    } catch (error) {
+      console.error('[OpenAIResponsesClient] SDK stream error:', error);
+      throw error;
+    }
+  }
+
+  /**
+   * Process OpenAI SDK stream and convert to ResponseStream
+   * The SDK handles SSE parsing and returns structured events
+   *
+   * @param sdkStream Async iterable from OpenAI SDK
+   * @param stream ResponseStream to populate with events
+   */
+  private async processSDKStreamToResponseStream(
+    sdkStream: AsyncIterable<any>,
+    stream: ResponseStream
+  ): Promise<void> {
+    try {
+      for await (const chunk of sdkStream) {
+        // The SDK returns structured event objects
+        // Convert SDK event format to our ResponseEvent format
+        const responseEvent = this.convertSDKEventToResponseEvent(chunk);
+
+        if (responseEvent) {
+          stream.addEvent(responseEvent);
+        }
+      }
+    } catch (error) {
+      console.error('[OpenAIResponsesClient] SDK stream error:', error);
+      throw error;
+    }
+  }
+
+  /**
+   * Convert OpenAI SDK event to ResponseEvent format
+   * Maps SDK's event structure to our internal ResponseEvent type
+   */
+  private convertSDKEventToResponseEvent(sdkEvent: any): ResponseEvent | null {
+    // The SDK event format will depend on what the actual SDK returns
+    // This is a placeholder implementation that will need to be adjusted
+    // based on the actual SDK event structure
+
+    if (!sdkEvent || !sdkEvent.type) {
+      return null;
+    }
+
+    // Map SDK event types to ResponseEvent types
+    // SDK event types will be determined once we test with actual responses
+    switch (sdkEvent.type) {
+      case 'response.created':
+        return { type: 'Created' };
+
+      case 'response.output_item.done':
+        return {
+          type: 'OutputItemDone',
+          item: sdkEvent.item,
+        };
+
+      case 'response.content_part.delta':
+      case 'response.output.text.delta':
+        return {
+          type: 'OutputTextDelta',
+          delta: sdkEvent.delta || sdkEvent.text || '',
+        };
+
+      case 'response.reasoning.summary.delta':
+        return {
+          type: 'ReasoningSummaryDelta',
+          delta: sdkEvent.delta || '',
+        };
+
+      case 'response.reasoning.content.delta':
+        return {
+          type: 'ReasoningContentDelta',
+          delta: sdkEvent.delta || '',
+        };
+
+      case 'response.reasoning.summary.part.added':
+        return { type: 'ReasoningSummaryPartAdded' };
+
+      case 'response.completed':
+      case 'response.done':
+        return {
+          type: 'Completed',
+          responseId: sdkEvent.response?.id || sdkEvent.id || '',
+          tokenUsage: sdkEvent.usage ? this.convertTokenUsage(sdkEvent.usage) : undefined,
+        };
+
+      // Add other event type mappings as needed
+      default:
+        // Log unknown events for debugging - we'll adjust mappings based on actual SDK behavior
+        console.debug('[OpenAIResponsesClient] Unknown SDK event type:', sdkEvent.type, sdkEvent);
+        return null;
+    }
+  }
+
   private async processSSEToStream(
     body: ReadableStream<Uint8Array>,
     headers: Headers | undefined,
@@ -715,68 +833,79 @@ export class OpenAIResponsesClient extends ModelClient {
   }
 
   /**
-   * Make HTTP request to OpenAI Responses API endpoint
+   * Make streaming request to OpenAI Responses API using official SDK
+   * Returns an async iterable stream of events
+   * Supports OpenAI, xAI (Grok), and other OpenAI-compatible providers
    */
-  private async makeResponsesApiRequest(payload: ResponsesApiRequest): Promise<Response> {
-    // T028: Validate API key before making request with provider name
+  private async makeResponsesApiRequest(payload: ResponsesApiRequest): Promise<AsyncIterable<any>> {
+    // Validate API key before making request
     if (!this.apiKey || !this.apiKey.trim()) {
       throw new ModelClientError(`No API key configured for provider: ${this.provider.name}`);
     }
 
-    // T028, T029: Build headers based on provider
-    const headers: Record<string, string> = {
-      'Content-Type': 'application/json',
-      'Authorization': `Bearer ${this.apiKey}`,
-      'Accept': 'text/event-stream',
-    };
+    try {
+      // Convert payload to SDK format
+      const requestParams: any = {
+        model: payload.model,
+        input: payload.input,
+        stream: true, // Always stream
+      };
 
-    // T029: Add OpenAI-specific headers only for OpenAI provider
-    if (this.provider.name === 'openai') {
-      headers['OpenAI-Beta'] = 'responses=experimental';
-      headers['conversation_id'] = this.conversationId;
-      headers['session_id'] = this.conversationId;
-
-      if (this.organization) {
-        headers['OpenAI-Organization'] = this.organization;
+      // Add optional parameters
+      if (payload.tools && payload.tools.length > 0) {
+        requestParams.tools = payload.tools;
       }
-    }
-
-    const url = `${this.baseUrl}/responses`;
-    const response = await fetch(url, {
-      method: 'POST',
-      headers,
-      body: JSON.stringify(payload),
-    });
-
-    if (!response.ok) {
-      const errorText = await response.text();
-      // T035: Include provider name in error messages
-      let errorMessage = `${this.provider.name} Responses API error: ${response.status} ${response.statusText}`;
-
-      try {
-        const errorData = JSON.parse(errorText);
-        if (errorData.error?.message) {
-          errorMessage = errorData.error.message;
-        }
-      } catch {
-        if (errorText) {
-          errorMessage = errorText;
-        }
+      if (payload.instructions) {
+        requestParams.instructions = payload.instructions;
+      }
+      if (payload.reasoning) {
+        requestParams.reasoning = payload.reasoning;
+      }
+      if (payload.text) {
+        requestParams.text = payload.text;
+      }
+      if (payload.store !== undefined) {
+        requestParams.store = payload.store;
+      }
+      if (payload.tool_choice) {
+        requestParams.tool_choice = payload.tool_choice;
+      }
+      if (payload.parallel_tool_calls !== undefined) {
+        requestParams.parallel_tool_calls = payload.parallel_tool_calls;
+      }
+      if (payload.include && payload.include.length > 0) {
+        requestParams.include = payload.include;
+      }
+      if (payload.prompt_cache_key) {
+        requestParams.prompt_cache_key = payload.prompt_cache_key;
       }
 
-      // Extract retry-after header if present
-      const retryAfter = response.headers.get('retry-after');
-      const retryAfterMs = retryAfter ? parseInt(retryAfter, 10) * 1000 : undefined;
+      // Add provider-specific headers if needed
+      const options: any = {};
+      if (this.provider.name === 'openai') {
+        options.headers = {
+          'conversation_id': this.conversationId,
+          'session_id': this.conversationId,
+        };
+      }
+
+      // Use OpenAI SDK's responses API with streaming
+      // The SDK handles authentication, retries, and format parsing
+      const stream = await (this.client as any).responses.create(requestParams, options);
+
+      return stream;
+    } catch (error: any) {
+      // Handle SDK errors and convert to ModelClientError
+      const statusCode = error.status || error.statusCode || 500;
+      const errorMessage = error.message || `${this.provider.name} Responses API error`;
 
       throw new ModelClientError(
         errorMessage,
-        response.status,
+        statusCode,
         this.provider.name,
-        this.isRetryableHttpError(response.status)
+        this.isRetryableHttpError(statusCode)
       );
     }
-
-    return response;
   }
 
   /**

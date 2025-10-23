@@ -23,7 +23,8 @@ import {
   mergeWithDefaults,
   getDefaultProviders
 } from './defaults';
-import { validateConfig, validateModelConfig, validateProviderConfig, validateAuthConfig } from './validators';
+import { validateConfig, validateModelConfig, validateProviderConfig, validateAuthConfig, detectProviderFromKey } from './validators';
+import { encryptApiKey, decryptApiKey } from '../utils/encryption';
 
 export class AgentConfig implements IConfigService {
   private static instance: AgentConfig | null = null;
@@ -306,8 +307,7 @@ export class AgentConfig implements IConfigService {
   async setProviderApiKey(providerId: string, apiKey: string): Promise<IProviderConfig> {
     this.ensureInitialized();
 
-    // Import encryption utilities
-    const { encryptApiKey } = await import('../utils/encryption');
+  // Use static import for encryption utilities
 
     // Get or create provider configuration
     let provider = this.currentConfig.providers[providerId];
@@ -343,8 +343,7 @@ export class AgentConfig implements IConfigService {
   async getProviderApiKey(providerId: string): Promise<string | null> {
     this.ensureInitialized();
 
-    // Import encryption utilities
-    const { decryptApiKey } = await import('../utils/encryption');
+  // Use static import for encryption utilities
 
     // Check provider-specific key first
     const provider = this.currentConfig.providers[providerId];
@@ -354,7 +353,6 @@ export class AgentConfig implements IConfigService {
 
     // T013: Backward compatibility fallback to auth.apiKey
     if (this.currentConfig.auth?.apiKey) {
-      const { detectProviderFromKey } = await import('./validators');
       const decryptedKey = decryptApiKey(this.currentConfig.auth.apiKey);
       if (decryptedKey) {
         const detectedProvider = detectProviderFromKey(decryptedKey);
@@ -466,8 +464,7 @@ export class AgentConfig implements IConfigService {
    * console.log(provider); // 'xai'
    */
   async detectProviderFromKey(apiKey: string): Promise<string> {
-    const { detectProviderFromKey } = await import('./validators');
-    return detectProviderFromKey(apiKey);
+  return detectProviderFromKey(apiKey);
   }
 
   // Authentication management

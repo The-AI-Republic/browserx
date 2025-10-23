@@ -96,8 +96,6 @@ export class BrowserxAgent {
     this.config.on('config-changed', (event: IConfigChangeEvent) => {
       if (event.section === 'model') {
         this.handleModelConfigChange(event);
-      } else if (event.section === 'security') {
-        this.handleSecurityConfigChange(event);
       }
     });
   }
@@ -145,18 +143,6 @@ export class BrowserxAgent {
     }
 
     // Note: UI update is handled by Settings.svelte success message
-  }
-
-  /**
-   * Handle security configuration changes
-   */
-  private handleSecurityConfigChange(event: IConfigChangeEvent): void {
-    console.log('Security configuration changed');
-
-    // Update approval manager policies
-    // ApprovalManager will handle its own config updates via its subscription
-
-    // Note: UI update is handled by the component that initiated the change
   }
 
   /**

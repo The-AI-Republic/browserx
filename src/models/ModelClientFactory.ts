@@ -245,18 +245,7 @@ export class ModelClientFactory {
       }
     }
 
-    // Fallback to original storage method for backward compatibility
-    const key = STORAGE_KEYS.OPENAI_API_KEY;
-
-    return new Promise((resolve, reject) => {
-      chrome.storage.sync.get([key], (result) => {
-        if (chrome.runtime.lastError) {
-          reject(new Error(chrome.runtime.lastError.message));
-        } else {
-          resolve(result[key] || null);
-        }
-      });
-    });
+    return null;
   }
 
   /**

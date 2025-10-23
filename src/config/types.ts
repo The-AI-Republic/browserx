@@ -255,16 +255,7 @@ export interface IConfigFactory {
   validateConfig(config: any): config is IAgentConfig;
 }
 
-// T007: Multi-provider migration and validation result types
-export interface IMigrationResult {
-  success: boolean;
-  migratedFrom?: string;
-  migratedTo?: string;
-  itemsMigrated?: number;
-  error?: string;
-  backupKey?: string;
-}
-
+// T007: Multi-provider validation result types
 export interface IProviderValidationResult {
   isValid: boolean;
   detectedProvider: 'openai' | 'xai' | 'anthropic' | 'unknown';

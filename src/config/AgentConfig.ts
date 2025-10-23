@@ -13,7 +13,6 @@ import type {
   IToolsConfig,
   IToolSpecificConfig,
   IAuthConfig,
-  IMigrationResult,
   IProviderStatus
 } from './types';
 import { ConfigValidationError } from './types';
@@ -53,7 +52,6 @@ export class AgentConfig implements IConfigService {
   /**
    * Initialize the config from storage (lazy initialization)
    * Called automatically on first config access
-   * T011: Triggers migration to v1.1.0 if needed
    */
   public async initialize(): Promise<void> {
     if (this.initialized) return;
@@ -63,17 +61,6 @@ export class AgentConfig implements IConfigService {
 
       if (storedConfig) {
         this.currentConfig = mergeWithDefaults(storedConfig);
-
-        // T011: Trigger migration if version < 1.1.0
-        if (!this.currentConfig.version || this.currentConfig.version < '1.1.0') {
-          console.log('[AgentConfig] Migrating config to v1.1.0...');
-          const migrationResult = await this.migrateToMultiProvider();
-          if (migrationResult.success) {
-            console.log('[AgentConfig] Migration successful:', migrationResult);
-          } else {
-            console.error('[AgentConfig] Migration failed:', migrationResult.error);
-          }
-        }
       } else {
         // First time setup
         this.currentConfig = DEFAULT_AGENT_CONFIG;
@@ -443,82 +430,6 @@ export class AgentConfig implements IConfigService {
   }
 
   /**
-   * T010: Migrate configuration from v1.0.0 to v1.1.0
-   * @returns Migration result with success status and metadata
-   * @remarks Automatically detects provider from existing API key format
-   * @remarks Creates backup before migration
-   * @example
-   * const result = await agentConfig.migrateToMultiProvider();
-   * if (result.success) {
-   *   console.log(`Migrated ${result.itemsMigrated} API keys`);
-   * }
-   */
-  async migrateToMultiProvider(): Promise<IMigrationResult> {
-    try {
-      const config = this.currentConfig;
-
-      // Check if already migrated
-      if (config.version && config.version >= '1.1.0') {
-        return {
-          success: true,
-          migratedFrom: config.version,
-          migratedTo: config.version,
-          itemsMigrated: 0
-        };
-      }
-
-      const { decryptApiKey } = await import('../utils/encryption');
-      const { detectProviderFromKey } = await import('./validators');
-
-      // Backup current config
-      const backupKey = `agent_config_backup_${Date.now()}`;
-      await chrome.storage.local.set({ [backupKey]: config });
-
-      let itemsMigrated = 0;
-
-      // Migrate existing auth.apiKey to providers map
-      if (config.auth?.apiKey && config.auth.apiKey !== '') {
-        const decryptedKey = decryptApiKey(config.auth.apiKey);
-        if (decryptedKey) {
-          const detectedProvider = detectProviderFromKey(decryptedKey);
-          if (detectedProvider !== 'unknown') {
-            const defaults = getDefaultProviders();
-            const providerConfig = defaults[detectedProvider];
-            if (providerConfig) {
-              providerConfig.apiKey = config.auth.apiKey; // Already encrypted
-              config.providers[detectedProvider] = providerConfig;
-              config.model.provider = detectedProvider;
-              itemsMigrated++;
-            }
-          }
-        }
-      }
-
-      // Update version
-      const migratedFrom = config.version || '1.0.0';
-      config.version = '1.1.0';
-
-      // Save migrated config
-      this.currentConfig = config;
-      await this.storage.set(config);
-
-      return {
-        success: true,
-        migratedFrom,
-        migratedTo: '1.1.0',
-        itemsMigrated,
-        backupKey
-      };
-    } catch (error) {
-      console.error('Migration failed:', error);
-      return {
-        success: false,
-        error: error instanceof Error ? error.message : 'Unknown error'
-      };
-    }
-  }
-
-  /**
    * T043: Get provider status information
    * @param providerId - Provider identifier
    * @returns Provider status with configuration and active state
@@ -789,10 +700,13 @@ export class AgentConfig implements IConfigService {
     this.ensureInitialized();
 
     const tools = this.currentConfig.tools || { enabled: [], disabled: [] };
+    if (!tools.enabled) tools.enabled = [];
+    if (!tools.disabled) tools.disabled = [];
+
     if (!tools.enabled.includes(toolName)) {
       tools.enabled.push(toolName);
     }
-    tools.disabled = (tools.disabled || []).filter(name => name !== toolName);
+    tools.disabled = tools.disabled.filter(name => name !== toolName);
 
     this.currentConfig.tools = tools as IToolsConfig;
     this.storage.set(this.currentConfig).catch(err => {
@@ -805,8 +719,10 @@ export class AgentConfig implements IConfigService {
     this.ensureInitialized();
 
     const tools = this.currentConfig.tools || { enabled: [], disabled: [] };
-    tools.enabled = tools.enabled.filter(name => name !== toolName);
+    if (!tools.enabled) tools.enabled = [];
     if (!tools.disabled) tools.disabled = [];
+
+    tools.enabled = tools.enabled.filter(name => name !== toolName);
     if (!tools.disabled.includes(toolName)) {
       tools.disabled.push(toolName);
     }

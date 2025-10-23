@@ -442,16 +442,31 @@
         // API key exists, trigger session reinitialization
         showMessage('Model changed successfully. Session will be reinitialized.', 'success');
         chrome.runtime.sendMessage({ type: 'CONFIG_UPDATE' });
+
+        // Update UI to show the API key for this provider
+        apiKey = providerApiKey;
+        maskedApiKey = maskApiKey(providerApiKey);
+        isAuthenticated = true;
       } else {
         // No API key yet, just update the selection
         showMessage(`Model changed to ${modelMetadata?.displayName || modelId}. Please configure your ${newProvider === 'openai' ? 'OpenAI' : newProvider === 'xai' ? 'xAI' : newProvider === 'anthropic' ? 'Anthropic' : newProvider} API key below.`, 'info');
 
-        // Load the (empty) API key for the new provider to update the UI
-        await loadSettings();
+        // Clear API key field to show it needs to be configured
+        apiKey = '';
+        maskedApiKey = '';
+        isAuthenticated = false;
       }
+
+      // Update configured providers list
+      configuredProviders = agentConfig.getConfiguredProviders();
     } catch (error) {
       console.error('Failed to change model:', error);
-      showMessage('Failed to change model', 'error');
+      const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+      showMessage(`Failed to change model: ${errorMessage}`, 'error');
+
+      // Revert model selection on error
+      selectedModel = agentConfig.getModelConfig().selected || 'gpt-5';
+      currentProvider = agentConfig.getModelConfig().provider || 'openai';
     } finally {
       isLoading = false;
     }

@@ -201,9 +201,29 @@ export const DEFAULT_TIMEOUTS = {
  * Merge partial config with defaults
  */
 export function mergeWithDefaults(partial: Partial<IAgentConfig>): IAgentConfig {
+  // Merge providers: ensure all default providers exist, preserve existing API keys
+  const defaultProviders = getDefaultProviders();
+  const mergedProviders: Record<string, any> = { ...defaultProviders };
+
+  if (partial.providers) {
+    Object.entries(partial.providers).forEach(([id, provider]) => {
+      if (mergedProviders[id]) {
+        // Provider exists in defaults, merge with stored values (preserve API keys)
+        mergedProviders[id] = {
+          ...mergedProviders[id],
+          ...provider
+        };
+      } else {
+        // Provider doesn't exist in defaults, keep it anyway
+        mergedProviders[id] = provider;
+      }
+    });
+  }
+
   return {
     ...DEFAULT_AGENT_CONFIG,
     ...partial,
+    providers: mergedProviders,
     model: {
       ...DEFAULT_MODEL_CONFIG,
       ...(partial.model || {})

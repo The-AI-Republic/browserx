@@ -435,10 +435,20 @@
       // Clear any previous provider validation warnings
       providerValidationWarning = '';
 
-      showMessage('Model changed successfully. Session will be reinitialized.', 'success');
+      // Check if the new provider has an API key configured
+      const providerApiKey = await agentConfig.getProviderApiKey(newProvider);
 
-      // Trigger session reinitialization
-      chrome.runtime.sendMessage({ type: 'CONFIG_UPDATE' });
+      if (providerApiKey) {
+        // API key exists, trigger session reinitialization
+        showMessage('Model changed successfully. Session will be reinitialized.', 'success');
+        chrome.runtime.sendMessage({ type: 'CONFIG_UPDATE' });
+      } else {
+        // No API key yet, just update the selection
+        showMessage(`Model changed to ${modelMetadata?.displayName || modelId}. Please configure your ${newProvider === 'openai' ? 'OpenAI' : newProvider === 'xai' ? 'xAI' : newProvider === 'anthropic' ? 'Anthropic' : newProvider} API key below.`, 'info');
+
+        // Load the (empty) API key for the new provider to update the UI
+        await loadSettings();
+      }
     } catch (error) {
       console.error('Failed to change model:', error);
       showMessage('Failed to change model', 'error');

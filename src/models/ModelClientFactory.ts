@@ -11,9 +11,9 @@ import type { AgentConfig } from '../config/AgentConfig';
 
 /**
  * Supported model providers
- * Note: Anthropic removed - not supported in Rust browserx-rs implementation
+ * T018, T019: Added xAI and Anthropic provider support
  */
-export type ModelProvider = 'openai';
+export type ModelProvider = 'openai' | 'xai' | 'anthropic';
 
 /**
  * Configuration for model client creation
@@ -43,7 +43,7 @@ const STORAGE_KEYS = {
 
 /**
  * Model name to provider mapping
- * Note: Only OpenAI models supported (matching Rust browserx-rs implementation)
+ * T018: Added support for xAI Grok models
  */
 const MODEL_PROVIDER_MAP: Record<string, ModelProvider> = {
   // OpenAI models
@@ -51,6 +51,8 @@ const MODEL_PROVIDER_MAP: Record<string, ModelProvider> = {
   'gpt-4': 'openai',
   'gpt-4-turbo': 'openai',
   'gpt-4o': 'openai',
+  // xAI models
+  'grok-4-fast-reasoning': 'xai',
 };
 
 const DEFAULT_MODEL = 'gpt-5';
@@ -176,6 +178,7 @@ export class ModelClientFactory {
 
   /**
    * Get the provider for a given model name
+   * T018: Enhanced to check ModelRegistry for multi-provider support
    * @param model The model name
    * @returns The provider for the model
    */
@@ -187,12 +190,24 @@ export class ModelClientFactory {
     const provider = MODEL_PROVIDER_MAP[model];
 
     if (!provider) {
+      // Check ModelRegistry for the model's provider
+      const modelMetadata = ModelRegistry.getModel(model);
+      if (modelMetadata && (modelMetadata.provider === 'openai' || modelMetadata.provider === 'xai' || modelMetadata.provider === 'anthropic')) {
+        return modelMetadata.provider as ModelProvider;
+      }
+
       // Try to infer from model name patterns
       if (model.startsWith('gpt-')) {
         return 'openai';
       }
+      if (model.startsWith('grok-')) {
+        return 'xai';
+      }
+      if (model.startsWith('claude-')) {
+        return 'anthropic';
+      }
 
-      throw new ModelClientError(`Unknown model: ${model}. Only OpenAI models supported.`);
+      throw new ModelClientError(`Unknown model: ${model}. Supported providers: OpenAI, xAI, Anthropic.`);
     }
 
     return provider;

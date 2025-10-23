@@ -3,7 +3,8 @@
  * Type definitions for the centralized config system
  */
 
-import { AuthMode, PlanType } from '../models/types/Auth.js';
+import { AuthMode } from '../models/types/Auth.js';
+import type { PlanType } from '../models/types/Auth.js';
 
 // Authentication configuration
 export interface IAuthConfig {
@@ -252,6 +253,32 @@ export interface IConfigFactory {
   createDefault(): IAgentConfig;
   createFromStorage(data: any): IAgentConfig;
   validateConfig(config: any): config is IAgentConfig;
+}
+
+// T007: Multi-provider migration and validation result types
+export interface IMigrationResult {
+  success: boolean;
+  migratedFrom?: string;
+  migratedTo?: string;
+  itemsMigrated?: number;
+  error?: string;
+  backupKey?: string;
+}
+
+export interface IProviderValidationResult {
+  isValid: boolean;
+  detectedProvider: 'openai' | 'xai' | 'anthropic' | 'unknown';
+  warnings: string[];
+  errors: string[];
+}
+
+export interface IProviderStatus {
+  id: string;
+  name: string;
+  configured: boolean;
+  active: boolean;
+  lastUsed?: number;
+  requestCount?: number;
 }
 
 // Error types

@@ -12,7 +12,9 @@ import type {
   IExportData,
   IToolsConfig,
   IToolSpecificConfig,
-  IAuthConfig
+  IAuthConfig,
+  IMigrationResult,
+  IProviderStatus
 } from './types';
 import { ConfigValidationError } from './types';
 import { ConfigStorage } from '../storage/ConfigStorage';
@@ -51,6 +53,7 @@ export class AgentConfig implements IConfigService {
   /**
    * Initialize the config from storage (lazy initialization)
    * Called automatically on first config access
+   * T011: Triggers migration to v1.1.0 if needed
    */
   public async initialize(): Promise<void> {
     if (this.initialized) return;
@@ -60,6 +63,17 @@ export class AgentConfig implements IConfigService {
 
       if (storedConfig) {
         this.currentConfig = mergeWithDefaults(storedConfig);
+
+        // T011: Trigger migration if version < 1.1.0
+        if (!this.currentConfig.version || this.currentConfig.version < '1.1.0') {
+          console.log('[AgentConfig] Migrating config to v1.1.0...');
+          const migrationResult = await this.migrateToMultiProvider();
+          if (migrationResult.success) {
+            console.log('[AgentConfig] Migration successful:', migrationResult);
+          } else {
+            console.error('[AgentConfig] Migration failed:', migrationResult.error);
+          }
+        }
       } else {
         // First time setup
         this.currentConfig = DEFAULT_AGENT_CONFIG;
@@ -225,11 +239,6 @@ export class AgentConfig implements IConfigService {
     return { ...this.currentConfig.providers };
   }
 
-  getProvider(id: string): IProviderConfig | null {
-    this.ensureInitialized();
-    return this.currentConfig.providers[id] || null;
-  }
-
   addProvider(provider: IProviderConfig): IProviderConfig {
     this.ensureInitialized();
 
@@ -296,6 +305,258 @@ export class AgentConfig implements IConfigService {
     });
 
     this.emitChangeEvent('provider', deleted, null);
+  }
+
+  /**
+   * T012: Set API key for a specific provider
+   * @param providerId - Provider identifier (e.g., 'openai', 'xai', 'anthropic')
+   * @param apiKey - Unencrypted API key (will be encrypted before storage)
+   * @returns Provider configuration with encrypted API key
+   * @throws Error if provider is unknown
+   * @example
+   * await agentConfig.setProviderApiKey('xai', 'xai-abc123...');
+   */
+  async setProviderApiKey(providerId: string, apiKey: string): Promise<IProviderConfig> {
+    this.ensureInitialized();
+
+    // Import encryption utilities
+    const { encryptApiKey } = await import('../utils/encryption');
+
+    // Get or create provider configuration
+    let provider = this.currentConfig.providers[providerId];
+    if (!provider) {
+      const defaults = getDefaultProviders();
+      if (!defaults[providerId]) {
+        throw new Error(`Unknown provider: ${providerId}`);
+      }
+      provider = { ...defaults[providerId] };
+    }
+
+    // Encrypt and store API key
+    provider.apiKey = encryptApiKey(apiKey);
+    this.currentConfig.providers[providerId] = provider;
+
+    await this.storage.set(this.currentConfig);
+    this.emitChangeEvent('provider', null, provider);
+
+    return provider;
+  }
+
+  /**
+   * T013: Get decrypted API key for a specific provider
+   * @param providerId - Provider identifier (e.g., 'openai', 'xai', 'anthropic')
+   * @returns Decrypted API key or null if not configured
+   * @remarks Includes backward compatibility fallback to auth.apiKey
+   * @example
+   * const apiKey = await agentConfig.getProviderApiKey('openai');
+   * if (apiKey) {
+   *   // Use API key for requests
+   * }
+   */
+  async getProviderApiKey(providerId: string): Promise<string | null> {
+    this.ensureInitialized();
+
+    // Import encryption utilities
+    const { decryptApiKey } = await import('../utils/encryption');
+
+    // Check provider-specific key first
+    const provider = this.currentConfig.providers[providerId];
+    if (provider?.apiKey) {
+      return decryptApiKey(provider.apiKey);
+    }
+
+    // T013: Backward compatibility fallback to auth.apiKey
+    if (this.currentConfig.auth?.apiKey) {
+      const { detectProviderFromKey } = await import('./validators');
+      const decryptedKey = decryptApiKey(this.currentConfig.auth.apiKey);
+      if (decryptedKey) {
+        const detectedProvider = detectProviderFromKey(decryptedKey);
+        if (detectedProvider === providerId) {
+          return decryptedKey;
+        }
+      }
+    }
+
+    return null;
+  }
+
+  /**
+   * T014: Get provider configuration by ID
+   * @param id - Provider identifier
+   * @returns Provider configuration or null if not found
+   * @example
+   * const provider = agentConfig.getProvider('xai');
+   * if (provider) {
+   *   console.log(provider.baseUrl); // https://api.x.ai/v1
+   * }
+   */
+  getProvider(id: string): IProviderConfig | null {
+    this.ensureInitialized();
+    return this.currentConfig.providers[id] || null;
+  }
+
+  /**
+   * T015: Get list of providers with configured API keys
+   * @returns Array of provider IDs that have API keys configured
+   * @example
+   * const configured = agentConfig.getConfiguredProviders();
+   * // ['openai', 'xai'] - providers with API keys
+   */
+  getConfiguredProviders(): string[] {
+    this.ensureInitialized();
+    return Object.keys(this.currentConfig.providers).filter(
+      id => this.currentConfig.providers[id].apiKey && this.currentConfig.providers[id].apiKey !== ''
+    );
+  }
+
+  /**
+   * T016: Switch active provider
+   * @param providerId - Provider identifier to switch to
+   * @throws Error if provider not found or no API key configured
+   * @remarks Conversation blocking should be handled in UI layer
+   * @example
+   * await agentConfig.switchProvider('xai');
+   * // Model.provider is now 'xai'
+   */
+  async switchProvider(providerId: string): Promise<void> {
+    this.ensureInitialized();
+
+    // Check if provider exists and has API key
+    const provider = this.currentConfig.providers[providerId];
+    if (!provider) {
+      throw new Error(`Provider not found: ${providerId}`);
+    }
+
+    const apiKey = await this.getProviderApiKey(providerId);
+    if (!apiKey) {
+      throw new Error(`No API key configured for provider: ${providerId}`);
+    }
+
+    // T016: Check for active conversation (will be implemented in UI layer)
+    // For now, just update the provider
+
+    const oldModel = this.currentConfig.model;
+    this.currentConfig.model.provider = providerId;
+
+    await this.storage.set(this.currentConfig);
+    this.emitChangeEvent('model', oldModel, this.currentConfig.model);
+  }
+
+  /**
+   * T010: Migrate configuration from v1.0.0 to v1.1.0
+   * @returns Migration result with success status and metadata
+   * @remarks Automatically detects provider from existing API key format
+   * @remarks Creates backup before migration
+   * @example
+   * const result = await agentConfig.migrateToMultiProvider();
+   * if (result.success) {
+   *   console.log(`Migrated ${result.itemsMigrated} API keys`);
+   * }
+   */
+  async migrateToMultiProvider(): Promise<IMigrationResult> {
+    try {
+      const config = this.currentConfig;
+
+      // Check if already migrated
+      if (config.version && config.version >= '1.1.0') {
+        return {
+          success: true,
+          migratedFrom: config.version,
+          migratedTo: config.version,
+          itemsMigrated: 0
+        };
+      }
+
+      const { decryptApiKey } = await import('../utils/encryption');
+      const { detectProviderFromKey } = await import('./validators');
+
+      // Backup current config
+      const backupKey = `agent_config_backup_${Date.now()}`;
+      await chrome.storage.local.set({ [backupKey]: config });
+
+      let itemsMigrated = 0;
+
+      // Migrate existing auth.apiKey to providers map
+      if (config.auth?.apiKey && config.auth.apiKey !== '') {
+        const decryptedKey = decryptApiKey(config.auth.apiKey);
+        if (decryptedKey) {
+          const detectedProvider = detectProviderFromKey(decryptedKey);
+          if (detectedProvider !== 'unknown') {
+            const defaults = getDefaultProviders();
+            const providerConfig = defaults[detectedProvider];
+            if (providerConfig) {
+              providerConfig.apiKey = config.auth.apiKey; // Already encrypted
+              config.providers[detectedProvider] = providerConfig;
+              config.model.provider = detectedProvider;
+              itemsMigrated++;
+            }
+          }
+        }
+      }
+
+      // Update version
+      const migratedFrom = config.version || '1.0.0';
+      config.version = '1.1.0';
+
+      // Save migrated config
+      this.currentConfig = config;
+      await this.storage.set(config);
+
+      return {
+        success: true,
+        migratedFrom,
+        migratedTo: '1.1.0',
+        itemsMigrated,
+        backupKey
+      };
+    } catch (error) {
+      console.error('Migration failed:', error);
+      return {
+        success: false,
+        error: error instanceof Error ? error.message : 'Unknown error'
+      };
+    }
+  }
+
+  /**
+   * T043: Get provider status information
+   * @param providerId - Provider identifier
+   * @returns Provider status with configuration and active state
+   * @example
+   * const status = agentConfig.getProviderStatus('xai');
+   * if (status.configured && status.active) {
+   *   console.log('xAI is configured and currently active');
+   * }
+   */
+  getProviderStatus(providerId: string): IProviderStatus {
+    this.ensureInitialized();
+
+    const provider = this.currentConfig.providers[providerId];
+    const hasApiKey = !!(provider?.apiKey && provider.apiKey !== '');
+    const isActive = this.currentConfig.model.provider === providerId;
+
+    return {
+      id: providerId,
+      name: provider?.name || providerId,
+      configured: hasApiKey,
+      active: isActive,
+      lastUsed: undefined,
+      requestCount: undefined
+    };
+  }
+
+  /**
+   * T008: Detect provider from API key format
+   * @param apiKey - Unencrypted API key
+   * @returns Provider identifier or 'unknown' if cannot be detected
+   * @remarks Uses regex patterns to identify provider from key format
+   * @example
+   * const provider = await agentConfig.detectProviderFromKey('xai-abc123');
+   * console.log(provider); // 'xai'
+   */
+  async detectProviderFromKey(apiKey: string): Promise<string> {
+    const { detectProviderFromKey } = await import('./validators');
+    return detectProviderFromKey(apiKey);
   }
 
   // Authentication management

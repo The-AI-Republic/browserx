@@ -113,13 +113,14 @@ function setupMessageHandlers(): void {
   // Handle state queries
   router.on(MessageType.GET_STATE, async () => {
     if (!agent) return null;
-    
+
     const session = agent.getSession();
     return {
       sessionId: session.conversationId,
       messageCount: session.getMessageCount(),
       turnContext: session.getTurnContext(),
       metadata: session.getMetadata(),
+      isActiveTurn: session.isActiveTurn(), // T039: Include active turn status
     };
   });
   

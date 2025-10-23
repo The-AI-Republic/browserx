@@ -30,7 +30,7 @@ export type ReasoningSummary = 'auto' | 'concise' | 'detailed' | 'none';
 /**
  * Supported model providers
  */
-export type ModelProvider = 'openai';
+export type ModelProvider = 'openai' | 'xai' | 'anthropic';
 
 // ============================================================================
 // Model Metadata

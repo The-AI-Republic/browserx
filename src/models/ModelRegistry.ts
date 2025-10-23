@@ -17,8 +17,9 @@ import type {
 } from './types/ModelRegistry';
 
 /**
- * Static registry of all supported OpenAI models
+ * Static registry of all supported models
  * T004: Implementation of MODEL_REGISTRY constant
+ * T018: Added grok-4-fast-reasoning model
  */
 export const MODEL_REGISTRY: Readonly<Record<string, ModelMetadata>> = {
   'gpt-5': {
@@ -34,6 +35,19 @@ export const MODEL_REGISTRY: Readonly<Record<string, ModelMetadata>> = {
     verbosityLevels: ['low', 'medium', 'high'],
     releaseDate: '2025-01-15',
     baseUrl: 'https://api.openai.com/v1'
+  },
+  'grok-4-fast-reasoning': {
+    id: 'grok-4-fast-reasoning',
+    provider: 'xai',
+    displayName: 'Grok-4-Fast-Reasoning',
+    contextWindow: 128000,
+    maxOutputTokens: 16384,
+    supportsReasoning: true,
+    reasoningEfforts: ['low', 'medium', 'high'],
+    supportsReasoningSummaries: true,
+    supportsVerbosity: false,
+    releaseDate: '2025-01-01',
+    baseUrl: 'https://api.x.ai/v1'
   }
 } as const;
 

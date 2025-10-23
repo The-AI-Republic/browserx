@@ -146,7 +146,7 @@ export const DEFAULT_TOOLS_CONFIG: IToolsConfig = {
 };
 
 export const DEFAULT_AGENT_CONFIG: IAgentConfig = {
-  version: '1.0.0',
+  version: '1.1.0',
   model: DEFAULT_MODEL_CONFIG,
   providers: {},
   profiles: {},
@@ -249,6 +249,7 @@ export function mergeWithDefaults(partial: Partial<IAgentConfig>): IAgentConfig 
 
 /**
  * Get default provider configurations
+ * T019: Added xAI provider configuration
  */
 export function getDefaultProviders(): Record<string, any> {
   return {
@@ -257,6 +258,14 @@ export function getDefaultProviders(): Record<string, any> {
       name: 'OpenAI',
       apiKey: '',
       baseUrl: 'https://api.openai.com/v1',
+      timeout: DEFAULT_TIMEOUTS.API_REQUEST,
+      retryConfig: DEFAULT_RETRY_CONFIG
+    },
+    xai: {
+      id: 'xai',
+      name: 'xAI',
+      apiKey: '',
+      baseUrl: 'https://api.x.ai/v1',
       timeout: DEFAULT_TIMEOUTS.API_REQUEST,
       retryConfig: DEFAULT_RETRY_CONFIG
     },

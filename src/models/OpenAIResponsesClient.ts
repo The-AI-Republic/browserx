@@ -228,6 +228,9 @@ export class OpenAIResponsesClient extends ModelClient {
     const include: string[] = reasoning ? ['reasoning.encrypted_content'] : [];
     const azureWorkaround = (this.provider.base_url && this.provider.base_url.indexOf('azure') !== -1) || false;
 
+    // T031: Set store: false for xAI provider (required for images)
+    const storeValue = this.provider.name === 'xai' ? false : azureWorkaround;
+
     const payload: ResponsesApiRequest = {
       model: this.currentModel,
       instructions: fullInstructions,
@@ -236,7 +239,7 @@ export class OpenAIResponsesClient extends ModelClient {
       tool_choice: 'auto',
       parallel_tool_calls: false,
       reasoning,
-      store: azureWorkaround,
+      store: storeValue,
       stream: true,
       include,
       prompt_cache_key: this.conversationId,
@@ -715,22 +718,27 @@ export class OpenAIResponsesClient extends ModelClient {
    * Make HTTP request to OpenAI Responses API endpoint
    */
   private async makeResponsesApiRequest(payload: ResponsesApiRequest): Promise<Response> {
-    // Validate API key before making request
+    // T028: Validate API key before making request with provider name
     if (!this.apiKey || !this.apiKey.trim()) {
-      throw new ModelClientError('No API key configured for provider: openai');
+      throw new ModelClientError(`No API key configured for provider: ${this.provider.name}`);
     }
 
+    // T028, T029: Build headers based on provider
     const headers: Record<string, string> = {
       'Content-Type': 'application/json',
       'Authorization': `Bearer ${this.apiKey}`,
-      'OpenAI-Beta': 'responses=experimental',
-      'conversation_id': this.conversationId,
-      'session_id': this.conversationId,
       'Accept': 'text/event-stream',
     };
 
-    if (this.organization) {
-      headers['OpenAI-Organization'] = this.organization;
+    // T029: Add OpenAI-specific headers only for OpenAI provider
+    if (this.provider.name === 'openai') {
+      headers['OpenAI-Beta'] = 'responses=experimental';
+      headers['conversation_id'] = this.conversationId;
+      headers['session_id'] = this.conversationId;
+
+      if (this.organization) {
+        headers['OpenAI-Organization'] = this.organization;
+      }
     }
 
     const url = `${this.baseUrl}/responses`;
@@ -742,7 +750,8 @@ export class OpenAIResponsesClient extends ModelClient {
 
     if (!response.ok) {
       const errorText = await response.text();
-      let errorMessage = `OpenAI Responses API error: ${response.status} ${response.statusText}`;
+      // T035: Include provider name in error messages
+      let errorMessage = `${this.provider.name} Responses API error: ${response.status} ${response.statusText}`;
 
       try {
         const errorData = JSON.parse(errorText);

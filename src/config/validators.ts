@@ -7,7 +7,8 @@ import type {
   IModelConfig,
   IProviderConfig,
   IProfileConfig,
-  IAuthConfig
+  IAuthConfig,
+  IProviderValidationResult
 } from './types';
 import { AuthMode } from '../models/types/Auth.js';
 import {
@@ -552,4 +553,86 @@ export function getDefaultModel(config: any): string {
   }
 
   return selected;
+}
+
+/**
+ * T009: API key format validation
+ * Validates API key format for specific provider
+ */
+export function validateApiKeyFormat(apiKey: string, expectedProvider?: string): IProviderValidationResult {
+  const detectedProvider = detectProviderFromKey(apiKey);
+  const warnings: string[] = [];
+  const errors: string[] = [];
+
+  // Check if detected provider matches expected provider
+  if (expectedProvider && detectedProvider !== 'unknown' && detectedProvider !== expectedProvider) {
+    warnings.push(
+      `API key appears to be for ${detectedProvider} but ${expectedProvider} was expected. ` +
+      `Save will proceed, but verify the key is correct.`
+    );
+  }
+
+  // Validate key is not empty
+  if (!apiKey || apiKey.trim() === '') {
+    errors.push('API key cannot be empty');
+    return {
+      isValid: false,
+      detectedProvider: 'unknown',
+      warnings,
+      errors
+    };
+  }
+
+  // Validate key format for detected provider
+  const API_KEY_PATTERNS: Record<string, RegExp> = {
+    openai: /^sk-(proj-|svcacct-|admin-)?[A-Za-z0-9_-]{40,}$/,
+    xai: /^xai-[A-Za-z0-9_-]{40,}$/,
+    anthropic: /^sk-ant-[A-Za-z0-9_-]{40,}$/
+  };
+
+  if (detectedProvider !== 'unknown') {
+    const pattern = API_KEY_PATTERNS[detectedProvider];
+    if (pattern && !pattern.test(apiKey)) {
+      warnings.push(`API key format may be invalid for ${detectedProvider}`);
+    }
+  }
+
+  return {
+    isValid: errors.length === 0,
+    detectedProvider,
+    warnings,
+    errors
+  };
+}
+
+/**
+ * T008: Detect provider from API key format
+ * Returns provider ID based on key pattern
+ */
+export function detectProviderFromKey(apiKey: string): 'openai' | 'xai' | 'anthropic' | 'unknown' {
+  if (!apiKey || apiKey.trim() === '') {
+    return 'unknown';
+  }
+
+  // xAI keys start with 'xai-'
+  if (apiKey.startsWith('xai-')) {
+    return 'xai';
+  }
+
+  // Anthropic keys start with 'sk-ant-'
+  if (apiKey.startsWith('sk-ant-')) {
+    return 'anthropic';
+  }
+
+  // OpenAI keys have T3BlbkFJ signature or start with sk-proj-/sk-svcacct-
+  if (apiKey.includes('T3BlbkFJ') || apiKey.startsWith('sk-proj-') || apiKey.startsWith('sk-svcacct-')) {
+    return 'openai';
+  }
+
+  // Default to OpenAI for keys starting with 'sk-' (backward compatibility)
+  if (apiKey.startsWith('sk-')) {
+    return 'openai';
+  }
+
+  return 'unknown';
 }

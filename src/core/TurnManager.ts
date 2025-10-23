@@ -842,7 +842,8 @@ export class TurnManager {
    */
   private async recordTurnContext(): Promise<void> {
     const turnContextItem = {
-      cwd: this.turnContext.getCwd(),
+      tabId: this.turnContext.getTabId(), // T093: Replaced cwd with tabId
+      sessionId: this.turnContext.getSessionId(), // T093: Added sessionId
       approval_policy: this.turnContext.getApprovalPolicy(),
       sandbox_policy: this.turnContext.getSandboxPolicy(),
       model: this.turnContext.getModel(),

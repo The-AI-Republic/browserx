@@ -146,7 +146,7 @@ export class Session {
       payload: {
         id: this.conversationId,
         timestamp: new Date().toISOString(),
-        cwd: this.turnContext?.getCwd?.() || '/',
+        tabId: this.sessionState.getTabId(), // T093: Replaced cwd with tabId
         originator: 'chrome-extension',
         cliVersion: '1.0.0'
       }

@@ -506,6 +506,44 @@ export abstract class BaseTool {
   }
 
   /**
+   * T060: Validate session's bound tab before browser operations
+   * T061: Throw TabInvalidError when validation fails
+   *
+   * @param sessionId - Session ID to validate tab for
+   * @returns The valid tab
+   * @throws TabInvalidError if tab is invalid
+   */
+  protected async validateSessionTab(sessionId: string): Promise<chrome.tabs.Tab> {
+    // Import TabBindingManager and TabInvalidError dynamically to avoid circular dependencies
+    const { TabBindingManager } = await import('../core/TabBindingManager');
+    const { TabInvalidError } = await import('../types/errors');
+
+    const bindingManager = TabBindingManager.getInstance();
+
+    // Get the tab bound to this session
+    const tabId = bindingManager.getTabForSession(sessionId);
+
+    // Check if session has a tab attached
+    if (tabId === -1) {
+      throw new Error(`Session ${sessionId} has no tab attached (tabId = -1)`);
+    }
+
+    // Validate the tab exists
+    const validation = await bindingManager.validateTab(tabId);
+
+    if (validation.status === 'invalid') {
+      // T061: Throw TabInvalidError when validation fails
+      throw new TabInvalidError(tabId, validation.reason, sessionId);
+    }
+
+    if (validation.status !== 'valid') {
+      throw new Error(`Tab ${tabId} validation returned unexpected status: ${validation.status}`);
+    }
+
+    return validation.tab;
+  }
+
+  /**
    * Get active tab
    */
   protected async getActiveTab(): Promise<chrome.tabs.Tab> {

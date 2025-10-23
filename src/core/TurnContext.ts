@@ -1,12 +1,17 @@
 /**
  * TurnContext implementation - ports TurnContext struct from browserx-rs
  * Manages turn state, context switching, approval policies, and sandbox settings
+ *
+ * BREAKING CHANGE: Replaced cwd (current working directory) with tabId (current working tab)
+ * for session-tab binding feature
  */
 
 import { ModelClient } from '../models/ModelClient';
 import { AskForApproval, SandboxPolicy, ReasoningEffortConfig, ReasoningSummaryConfig } from '../protocol/types';
 import type { IToolsConfig } from '../config/types';
 import { DEFAULT_TOOLS_CONFIG } from '../config/defaults';
+import { TabBindingManager } from './TabBindingManager';
+import { TabValidationState } from '../types/session';
 
 /**
  * browser environment policy for task execution
@@ -17,8 +22,10 @@ export type BrowserEnvironmentPolicy = 'preserve' | 'clean' | 'restricted';
  * Turn configuration that can be updated during execution
  */
 export interface TurnContextConfig {
-  /** Current working directory */
-  cwd?: string;
+  /** T025: Current working tab ID (replaces cwd) */
+  tabId?: number;
+  /** T025: Parent session identifier */
+  sessionId?: string;
   /** Base instructions override */
   baseInstructions?: string;
   /** User instructions for this turn */
@@ -47,7 +54,8 @@ export interface TurnContextConfig {
  */
 export class TurnContext {
   private modelClient: ModelClient;
-  private cwd: string;
+  private tabId: number; // T024: Replace cwd with tabId
+  private sessionId: string; // T025: Add sessionId field
   private baseInstructions?: string;
   private userInstructions?: string;
   private approvalPolicy: AskForApproval;
@@ -62,8 +70,9 @@ export class TurnContext {
   ) {
     this.modelClient = modelClient;
 
-    // Initialize with defaults or provided config
-    this.cwd = config.cwd || '/';
+    // T026: Initialize with defaults or provided config
+    this.tabId = config.tabId !== undefined ? config.tabId : -1; // Default to -1 (no tab attached)
+    this.sessionId = config.sessionId || ''; // Default to empty string
     this.baseInstructions = config.baseInstructions;
     this.userInstructions = config.userInstructions;
     this.approvalPolicy = config.approvalPolicy || 'on-request';
@@ -82,8 +91,11 @@ export class TurnContext {
    * Update turn context configuration
    */
   update(config: TurnContextConfig): void {
-    if (config.cwd !== undefined) {
-      this.cwd = config.cwd;
+    if (config.tabId !== undefined) {
+      this.tabId = config.tabId;
+    }
+    if (config.sessionId !== undefined) {
+      this.sessionId = config.sessionId;
     }
     if (config.baseInstructions !== undefined) {
       this.baseInstructions = config.baseInstructions;
@@ -119,60 +131,43 @@ export class TurnContext {
     }
   }
 
+  // T027-T030: Removed getCwd, setCwd, resolvePath, isPathWritable methods
+  // These have been replaced with tab-based methods below
+
   /**
-   * Get current working directory
+   * T031: Get current working tab ID
    */
-  getCwd(): string {
-    return this.cwd;
+  getTabId(): number {
+    return this.tabId;
   }
 
   /**
-   * Set current working directory
+   * T032: Set current working tab ID
    */
-  setCwd(cwd: string): void {
-    this.cwd = cwd;
+  setTabId(tabId: number): void {
+    this.tabId = tabId;
   }
 
   /**
-   * Resolve a path relative to the current working directory
-   * Port of TurnContext::resolve_path from Rust
+   * T033: Get parent session ID
    */
-  resolvePath(path?: string): string {
-    if (!path) {
-      return this.cwd;
-    }
-
-    // If path is absolute, return as-is
-    if (path.startsWith('/') || path.match(/^[a-zA-Z]:/)) {
-      return path;
-    }
-
-    // Resolve relative path against cwd
-    const resolved = this.cwd === '/'
-      ? `/${path}`
-      : `${this.cwd.replace(/\/$/, '')}/${path}`;
-
-    return this.normalizePath(resolved);
+  getSessionId(): string {
+    return this.sessionId;
   }
 
   /**
-   * Normalize path by resolving . and .. components
+   * T034: Validate current tab exists and is accessible
    */
-  private normalizePath(path: string): string {
-    const parts = path.split('/').filter(part => part !== '');
-    const normalized: string[] = [];
+  async validateCurrentTab(): Promise<TabValidationState> {
+    const bindingManager = TabBindingManager.getInstance();
+    return await bindingManager.validateTab(this.tabId);
+  }
 
-    for (const part of parts) {
-      if (part === '.') {
-        continue; // Skip current directory references
-      } else if (part === '..') {
-        normalized.pop(); // Go up one directory
-      } else {
-        normalized.push(part);
-      }
-    }
-
-    return '/' + normalized.join('/');
+  /**
+   * T035: Check if tab is currently attached
+   */
+  hasTabAttached(): boolean {
+    return this.tabId !== -1;
   }
 
   /**
@@ -248,31 +243,7 @@ export class TurnContext {
     this.sandboxPolicy = policy;
   }
 
-  /**
-   * Check if a path is writable according to sandbox policy
-   */
-  isPathWritable(path: string): boolean {
-    const resolvedPath = this.resolvePath(path);
-
-    switch (this.sandboxPolicy.mode) {
-      case 'danger-full-access':
-        return true;
-
-      case 'read-only':
-        return false;
-
-      case 'workspace-write':
-        // Check if path is within writable roots
-        const writableRoots = this.sandboxPolicy.writable_roots || [this.cwd];
-        return writableRoots.some(root => {
-          const normalizedRoot = this.resolvePath(root);
-          return resolvedPath.startsWith(normalizedRoot);
-        });
-
-      default:
-        return false;
-    }
-  }
+  // T030: Removed isPathWritable method (no longer applicable with tab-based context)
 
   /**
    * Check if network access is allowed
@@ -389,7 +360,8 @@ export class TurnContext {
    */
   clone(): TurnContext {
     const cloned = new TurnContext(this.modelClient, {
-      cwd: this.cwd,
+      tabId: this.tabId,
+      sessionId: this.sessionId,
       baseInstructions: this.baseInstructions,
       userInstructions: this.userInstructions,
       approvalPolicy: this.approvalPolicy,
@@ -403,10 +375,11 @@ export class TurnContext {
   }
 
   /**
-   * Export turn context for serialization
+   * T036: Export turn context for serialization
    */
   export(): {
-    cwd: string;
+    tabId: number;
+    sessionId: string;
     baseInstructions?: string;
     userInstructions?: string;
     approvalPolicy: AskForApproval;
@@ -419,7 +392,8 @@ export class TurnContext {
     reviewMode: boolean;
   } {
     return {
-      cwd: this.cwd,
+      tabId: this.tabId,
+      sessionId: this.sessionId,
       baseInstructions: this.baseInstructions,
       userInstructions: this.userInstructions,
       approvalPolicy: this.approvalPolicy,
@@ -434,12 +408,13 @@ export class TurnContext {
   }
 
   /**
-   * Import turn context from serialized data
+   * T037: Import turn context from serialized data
    */
   static import(
     modelClient: ModelClient,
     data: {
-      cwd: string;
+      tabId: number;
+      sessionId: string;
       baseInstructions?: string;
       userInstructions?: string;
       approvalPolicy: AskForApproval;
@@ -460,7 +435,8 @@ export class TurnContext {
     modelClient.setReasoningSummary(data.summary);
 
     return new TurnContext(modelClient, {
-      cwd: data.cwd,
+      tabId: data.tabId,
+      sessionId: data.sessionId,
       baseInstructions: data.baseInstructions,
       userInstructions: data.userInstructions,
       approvalPolicy: data.approvalPolicy,
@@ -491,9 +467,14 @@ export class TurnContext {
   validate(): { valid: boolean; errors: string[] } {
     const errors: string[] = [];
 
-    // Validate cwd
-    if (!this.cwd) {
-      errors.push('Current working directory is required');
+    // Validate tabId
+    if (this.tabId !== -1 && (this.tabId < 0 || !Number.isInteger(this.tabId))) {
+      errors.push('Tab ID must be -1 (unbound) or a positive integer');
+    }
+
+    // Validate sessionId
+    if (!this.sessionId) {
+      errors.push('Session ID is required');
     }
 
     // Validate model client
@@ -530,7 +511,9 @@ export class TurnContext {
    */
   getDebugInfo(): Record<string, any> {
     return {
-      cwd: this.cwd,
+      tabId: this.tabId,
+      sessionId: this.sessionId,
+      hasTabAttached: this.hasTabAttached(),
       model: this.getModel(),
       approvalPolicy: this.approvalPolicy,
       sandboxPolicy: this.sandboxPolicy,

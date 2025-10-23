@@ -85,7 +85,46 @@ export class BrowserxAgent {
     // Set the turn context on the session
     this.session.setTurnContext(taskContext);
 
+    // Setup tab closure detection (User Story 2)
+    this.setupTabClosureHandler();
+
     console.log('Agent initialized successfully with model client');
+  }
+
+  /**
+   * Setup tab closure event handler
+   * User Story 2: Detect tab closure and stop execution
+   */
+  private setupTabClosureHandler(): void {
+    // Import dynamically to avoid circular dependencies
+    import('./TabBindingManager').then(({ TabBindingManager }) => {
+      const tabBindingManager = TabBindingManager.getInstance();
+
+      tabBindingManager.onTabClosed(async (sessionId: string, tabId: number) => {
+        console.log(`[BrowserxAgent] Tab ${tabId} closed for session ${sessionId}`);
+
+        // Reset session's tabId to -1
+        if (this.session && this.session.getId() === sessionId) {
+          // Access sessionState to reset tabId
+          const sessionState = (this.session as any).sessionState;
+          if (sessionState && typeof sessionState.setTabId === 'function') {
+            sessionState.setTabId(-1);
+            console.log(`[BrowserxAgent] Reset tabId to -1 for session ${sessionId}`);
+          }
+
+          // Abort all running tasks
+          await this.session.abortAllTasks('TabClosed');
+
+          // Show notification to user
+          await this.userNotifier.notifyWarning(
+            'Tab Closed',
+            'The tab has been closed'
+          );
+
+          console.log(`[BrowserxAgent] Stopped tasks and notified user for session ${sessionId}`);
+        }
+      });
+    });
   }
 
   /**

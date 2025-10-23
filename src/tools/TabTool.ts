@@ -7,6 +7,8 @@
 
 import { BaseTool, createToolDefinition, type BaseToolRequest, type BaseToolOptions, type ToolDefinition } from './BaseTool';
 import { TabGroupManager } from './tab/TabGroupManager';
+import { TabBindingManager } from '../core/TabBindingManager';
+import { TabCreationError } from '../types/errors';
 
 /**
  * Tab tool request interface
@@ -17,6 +19,7 @@ export interface TabToolRequest extends BaseToolRequest {
   url?: string;
   properties?: TabProperties;
   query?: TabQuery;
+  sessionId?: string; // T043: Add sessionId for session-aware tab creation
 }
 
 /**
@@ -94,6 +97,10 @@ export class TabTool extends BaseTool {
         type: 'string',
         description: 'URL for tab creation or navigation',
       },
+      sessionId: {
+        type: 'string',
+        description: 'Session ID for session-aware tab operations. When creating a tab, this binds the new tab to the session.',
+      },
       properties: {
         type: 'object',
         description: 'Tab properties for updates',
@@ -169,8 +176,43 @@ export class TabTool extends BaseTool {
 
   /**
    * Create a new tab
+   * T043-T050: Session-aware tab creation
    */
   private async createTab(request: TabToolRequest): Promise<TabToolResponse> {
+    // T043: Check if session already has a tab bound
+    if (request.sessionId) {
+      const bindingManager = TabBindingManager.getInstance();
+      const existingTabId = bindingManager.getTabForSession(request.sessionId);
+
+      // T046: Prevent creating new tab if session already has one
+      if (existingTabId !== -1) {
+        // T047: Return descriptive error when tab creation attempted with bound session
+        const binding = bindingManager.getBinding(existingTabId);
+        const tabTitle = binding?.tabTitle || 'Unknown';
+        const errorMessage = `Cannot create new tab: session is already bound to tab ${existingTabId} ("${tabTitle}"). ` +
+          `Use the existing tab or close it first to create a new one.`;
+
+        this.log('warn', `Tab creation blocked for session ${request.sessionId}`, {
+          sessionId: request.sessionId,
+          existingTabId,
+          tabTitle,
+        });
+
+        // T048: User-friendly error message
+        // T049: TabCreationError maintains context for retry capability
+        throw new TabCreationError(
+          errorMessage,
+          request.sessionId
+        );
+      }
+
+      // T050: Log tab creation attempt
+      this.log('info', `Creating new tab for session ${request.sessionId}`, {
+        sessionId: request.sessionId,
+        url: request.url || 'about:blank',
+      });
+    }
+
     const createProperties: chrome.tabs.CreateProperties = {
       url: request.url || 'about:blank',
       active: request.properties?.active ?? false,
@@ -181,24 +223,85 @@ export class TabTool extends BaseTool {
     try {
       const tab = await chrome.tabs.create(createProperties);
 
+      if (!tab.id) {
+        throw new Error('Created tab has no ID');
+      }
+
       // Add tab to BrowserX group
       const tabGroupManager = TabGroupManager.getInstance();
-      await tabGroupManager.addTabToGroup(tab.id!);
+      await tabGroupManager.addTabToGroup(tab.id);
 
       // Wait for tab to load if URL was provided
       if (request.url && request.url !== 'about:blank') {
-        await this.waitForTabToLoad(tab.id!);
+        await this.waitForTabToLoad(tab.id);
       }
 
       const tabInfo = this.convertTabToInfo(tab);
 
-      this.log('info', `Created tab with ID: ${tab.id}`, tabInfo);
+      // T044: Bind created tab to session via TabBindingManager
+      // T045: Update session.tabId after successful creation
+      if (request.sessionId) {
+        const bindingManager = TabBindingManager.getInstance();
+
+        // Create TabInfo for binding
+        const bindingTabInfo: TabInfo = {
+          id: tab.id,
+          url: tab.url || '',
+          title: tab.title || 'Untitled',
+          active: tab.active || false,
+          pinned: tab.pinned || false,
+          windowId: tab.windowId!,
+          status: tab.status as 'loading' | 'complete' || 'complete',
+          index: tab.index,
+          favicon: tab.favIconUrl,
+          incognito: tab.incognito,
+        };
+
+        await bindingManager.bindTabToSession(
+          request.sessionId,
+          tab.id,
+          bindingTabInfo
+        );
+
+        // T050: Log successful tab creation and binding
+        this.log('info', `Created and bound tab ${tab.id} to session ${request.sessionId}`, {
+          sessionId: request.sessionId,
+          tabId: tab.id,
+          url: tab.url,
+          title: tab.title,
+        });
+      } else {
+        // T050: Log tab creation without session binding
+        this.log('info', `Created tab with ID: ${tab.id} (no session binding)`, tabInfo);
+      }
 
       return {
         tab: tabInfo,
         tabId: tab.id,
       };
     } catch (error) {
+      // T048: Implement tab creation error handling with user-friendly messages
+      // T049: TabCreationError maintains tabId = -1 for retry capability
+      if (error instanceof TabCreationError) {
+        // Re-throw TabCreationError as-is (already has proper format)
+        throw error;
+      }
+
+      // T050: Log tab creation failure
+      if (request.sessionId) {
+        this.log('error', `Failed to create tab for session ${request.sessionId}`, {
+          sessionId: request.sessionId,
+          error: error instanceof Error ? error.message : String(error),
+        });
+
+        throw new TabCreationError(
+          `Failed to create tab: ${error instanceof Error ? error.message : String(error)}`,
+          request.sessionId,
+          error
+        );
+      }
+
+      // No session context - throw generic error
       throw new Error(`Failed to create tab: ${error}`);
     }
   }

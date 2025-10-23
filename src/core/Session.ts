@@ -292,8 +292,9 @@ export class Session {
 
   /**
    * Import session from persistence
+   * T038-T039: Includes defensive restoration for tab binding
    */
-  static import(data: {
+  static async import(data: {
     id: string;
     state: SessionStateExport;
     metadata: {
@@ -301,13 +302,27 @@ export class Session {
       lastAccessed: number;
       messageCount: number;
     };
-  }, services?: SessionServices, toolRegistry?: ToolRegistry): Session {
+  }, services?: SessionServices, toolRegistry?: ToolRegistry): Promise<Session> {
     // Create session with resumed history mode (no rollout items since we're importing directly)
     const initialHistory: InitialHistory = { mode: 'new' }; // Use 'new' mode since we're setting state directly
     const session = new Session(undefined, true, services, toolRegistry, initialHistory);
 
     // Import SessionState
     session.sessionState = SessionState.import(data.state);
+
+    // T039: Defensive session restoration - validate tabId
+    const tabId = session.sessionState.getTabId();
+    if (tabId !== -1) {
+      try {
+        // Validate that tab still exists
+        await chrome.tabs.get(tabId);
+        // Tab exists, binding is still valid
+      } catch (error) {
+        // Tab no longer exists, reset to unbound state
+        console.log(`[Session.import] Tab ${tabId} no longer exists, resetting to -1`);
+        session.sessionState.setTabId(-1);
+      }
+    }
 
     // Set metadata
     Object.assign(session, {

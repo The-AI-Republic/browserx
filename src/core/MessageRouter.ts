@@ -35,7 +35,6 @@ export enum MessageType {
   STORAGE_RESULT = 'STORAGE_RESULT',
 
   // Model client messages
-  MODEL_REQUEST = 'MODEL_REQUEST',
   MODEL_RESPONSE = 'MODEL_RESPONSE',
   MODEL_ERROR = 'MODEL_ERROR',
 
@@ -406,13 +405,6 @@ export class MessageRouter {
 
   async storageSet(key: string, value: any): Promise<void> {
     await this.send(MessageType.STORAGE_SET, { key, value });
-  }
-
-  /**
-   * Model client operations
-   */
-  async sendModelRequest(config: any, prompt: string): Promise<any> {
-    return this.send(MessageType.MODEL_REQUEST, { config, prompt });
   }
 
   async sendModelResponse(response: any): Promise<void> {

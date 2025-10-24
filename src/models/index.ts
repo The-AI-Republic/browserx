@@ -28,7 +28,6 @@ export { OpenAIResponsesClient, type OpenAIResponsesConfig } from './OpenAIRespo
 // Factory and utilities
 export {
   ModelClientFactory,
-  getModelClientFactory,
   type ModelProvider,
   type ModelClientConfig,
 } from './ModelClientFactory';
@@ -57,20 +56,4 @@ export {
   type QueueMetrics,
 } from './RequestQueue';
 
-/**
- * Model Registry
- * Feature: 001-multi-model-support
- * Centralized model metadata and validation
- */
-export {
-  ModelRegistry,
-  MODEL_REGISTRY,
-} from './ModelRegistry';
-
-export type {
-  ModelMetadata,
-  ModelFilterOptions,
-  ModelValidationResult,
-  ConfiguredFeatures,
-  SuggestedAction,
-} from './types/ModelRegistry';
+// ModelRegistry removed - model metadata now managed by AgentConfig

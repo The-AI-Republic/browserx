@@ -7,10 +7,8 @@ import type {
   IModelConfig,
   IProviderConfig,
   IProfileConfig,
-  IAuthConfig,
   IProviderValidationResult
 } from './types';
-import { AuthMode } from '../models/types/Auth.js';
 import {
   VALID_THEMES,
   VALID_UPDATE_CHANNELS,
@@ -45,18 +43,47 @@ export function validateConfig(config: any): ValidationResult {
     };
   }
 
-  // Validate model
-  if (!config.model || typeof config.model !== 'object') {
-    return {
-      valid: false,
-      field: 'model',
-      error: 'Model configuration is required'
-    };
+  // Validate selectedModelId (new system)
+  if (config.selectedModelId) {
+    if (!isValidModelId(config.selectedModelId)) {
+      return {
+        valid: false,
+        field: 'selectedModelId',
+        value: config.selectedModelId,
+        error: 'Invalid model ID format, expected 6-digit numeric string'
+      };
+    }
+
+    // Verify selectedModelId exists in registry
+    if (config.modelRegistry && !config.modelRegistry[config.selectedModelId]) {
+      return {
+        valid: false,
+        field: 'selectedModelId',
+        value: config.selectedModelId,
+        error: 'Selected model ID not found in model registry'
+      };
+    }
+
+    // Verify the provider referenced in registry exists
+    if (config.modelRegistry && config.providers) {
+      const entry = config.modelRegistry[config.selectedModelId];
+      if (entry && !config.providers[entry.providerId]) {
+        return {
+          valid: false,
+          field: 'selectedModelId',
+          value: config.selectedModelId,
+          error: `Provider ${entry.providerId} not found for selected model`
+        };
+      }
+    }
   }
 
-  const modelValidation = validateModelConfig(config.model);
-  if (!modelValidation.valid) {
-    return modelValidation;
+  // Validate model (legacy, optional for backward compatibility)
+  if (config.model && typeof config.model === 'object') {
+    const modelValidation = validateModelConfig(config.model);
+    if (!modelValidation.valid) {
+      return modelValidation;
+    }
   }
 
   // Validate providers
@@ -420,100 +447,14 @@ export function validateExtensionSettings(ext: any): ValidationResult {
 }
 
 /**
- * Validate authentication configuration
- */
-export function validateAuthConfig(auth: any): ValidationResult {
-  if (!auth || typeof auth !== 'object') {
-    return { valid: false, error: 'Auth configuration must be an object' };
-  }
-
-  // Validate apiKey (if non-empty, should be valid base64)
-  if (auth.apiKey && typeof auth.apiKey !== 'string') {
-    return {
-      valid: false,
-      field: 'auth.apiKey',
-      value: auth.apiKey,
-      error: 'API key must be a string'
-    };
-  }
-
-  // Validate authMode
-  if (!Object.values(AuthMode).includes(auth.authMode)) {
-    return {
-      valid: false,
-      field: 'auth.authMode',
-      value: auth.authMode,
-      error: `Invalid auth mode: must be one of ${Object.values(AuthMode).join(', ')}`
-    };
-  }
-
-  // Validate lastUpdated (if provided)
-  if (auth.lastUpdated !== undefined) {
-    if (typeof auth.lastUpdated !== 'number' || auth.lastUpdated < 0) {
-      return {
-        valid: false,
-        field: 'auth.lastUpdated',
-        value: auth.lastUpdated,
-        error: 'lastUpdated must be a non-negative number'
-      };
-    }
-  }
-
-  // accountId and planType can be any value or null, no validation needed
-
-  return { valid: true };
-}
-
-/**
  * T006, Model Registry Validation Functions
  * Feature: 001-multi-model-support
  */
 
-import { ModelRegistry } from '../models/ModelRegistry';
-import type {
-  ModelValidationResult as RegistryValidationResult,
-  ConfiguredFeatures
-} from '../models/types/ModelRegistry';
+// ModelRegistry has been removed - validation now handled by AgentConfig
 
 /**
- * T006, Validate model configuration against feature compatibility
- * Enhanced version that uses ModelRegistry for validation
- *
- * @param config Model configuration to validate
- * @returns Validation result with model registry information
- */
-export function validateModelConfigWithRegistry(config: IModelConfig): RegistryValidationResult {
-  const features: ConfiguredFeatures = {
-    reasoningEffort: config.reasoningEffort,
-    reasoningSummary: config.reasoningSummary,
-    verbosity: config.verbosity,
-    contextWindow: config.contextWindow,
-    maxOutputTokens: config.maxOutputTokens
-  };
-
-  const result = ModelRegistry.validateCompatibility(config.selected, features);
-
-  // Log validation failures for debugging
-  if (!result.valid) {
-    console.warn('[ModelValidation] Model configuration validation failed:', {
-      model: config.selected,
-      errors: result.errors,
-      warnings: result.warnings,
-      incompatibleFeatures: result.incompatibleFeatures,
-      suggestedActions: result.suggestedActions
-    });
-  } else if (result.warnings && result.warnings.length > 0) {
-    console.info('[ModelValidation] Model configuration has warnings:', {
-      model: config.selected,
-      warnings: result.warnings
-    });
-  }
-
-  return result;
-}
-
-/**
- * Get default model ID, handling deprecated models
+ * Get default model ID (simplified - ModelRegistry removed)
  *
  * @param config Agent configuration
  * @returns Default model ID
@@ -522,34 +463,7 @@ export function getDefaultModel(config: any): string {
   const selected = config?.model?.selected;
 
   if (!selected || selected.trim() === '') {
-    return ModelRegistry.getDefaultModel();
-  }
-
-  const metadata = ModelRegistry.getModel(selected);
-
-  // If selected model is deprecated, try to find an alternative
-  if (metadata?.deprecated) {
-    const alternatives = ModelRegistry.getAvailableModels({
-      excludeDeprecated: true,
-      provider: metadata.provider
-    });
-
-    if (alternatives.length > 0) {
-      console.warn(
-        `Model ${selected} is deprecated. Consider switching to ${alternatives[0].id}.` +
-        (metadata.deprecationMessage ? ` ${metadata.deprecationMessage}` : '')
-      );
-    }
-
-    // Still return the deprecated model - user must manually change it
-    // Per clarification Q1: show warning but continue using deprecated model
-    return selected;
-  }
-
-  // If model doesn't exist in registry, return default
-  if (!metadata) {
-    console.warn(`Unknown model ${selected}, using default`);
-    return ModelRegistry.getDefaultModel();
+    return 'gpt-5'; // Default model
   }
 
   return selected;
@@ -635,4 +549,70 @@ export function detectProviderFromKey(apiKey: string): 'openai' | 'xai' | 'anthr
   }
 
   return 'unknown';
+}
+
+/**
+ * Validate model ID format
+ * Checks if the provided ID is a valid 6-digit zero-padded numeric string
+ * @param id - Model ID to validate
+ * @returns true if ID is valid 6-digit format (e.g., "000001", "000042")
+ * @example
+ * isValidModelId("000001"); // true
+ * isValidModelId("123");    // false
+ * isValidModelId("abc123"); // false
+ */
+export function isValidModelId(id: string): boolean {
+  return /^\d{6}$/.test(id);
+}
+
+/**
+ * T065: Validate model ID uniqueness across all providers
+ * Ensures no duplicate model IDs exist in the configuration
+ * @param config - Agent configuration to validate
+ * @returns Validation result with duplicate IDs if found
+ * @example
+ * const result = validateModelIdUniqueness(config);
+ * if (!result.valid) {
+ *   console.error('Duplicate model IDs:', result.duplicates);
+ * }
+ */
+export function validateModelIdUniqueness(config: IAgentConfig): {
+  valid: boolean;
+  duplicates: string[];
+  error?: string;
+} {
+  const seenIds = new Set<string>();
+  const duplicates: string[] = [];
+
+  // Check all models across all providers
+  for (const provider of Object.values(config.providers)) {
+    if (!provider.models || !Array.isArray(provider.models)) {
+      continue;
+    }
+
+    for (const model of provider.models) {
+      if (!model.id) {
+        continue; // Skip models without IDs (will be auto-generated)
+      }
+
+      if (seenIds.has(model.id)) {
+        duplicates.push(model.id);
+      } else {
+        seenIds.add(model.id);
+      }
+    }
+  }
+
+  if (duplicates.length > 0) {
+    return {
+      valid: false,
+      duplicates,
+      error: `Duplicate model IDs found: ${duplicates.join(', ')}`
+    };
+  }
+
+  return {
+    valid: true,
+    duplicates: []
+  };
 }

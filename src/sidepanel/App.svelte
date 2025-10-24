@@ -38,12 +38,42 @@
     // Initialize router
     router = new MessageRouter('sidepanel');
 
-    // Request session reset when side panel opens
-    try {
-      await router.requestSessionReset();
-      console.log('Session reset on side panel open');
-    } catch (error) {
-      console.error('Failed to reset session:', error);
+    // Wait for background service worker to be ready
+    let retries = 0;
+    const maxRetries = 5;
+    const retryDelay = 500; // ms
+
+    while (retries < maxRetries) {
+      try {
+        // Test connection with ping
+        await router.send(MessageType.PING);
+        console.log('Connected to background service worker');
+        break;
+      } catch (error) {
+        retries++;
+        if (retries >= maxRetries) {
+          console.warn('Failed to connect to background service worker after', maxRetries, 'attempts');
+          break;
+        }
+        console.log(`Connection attempt ${retries} failed, retrying in ${retryDelay}ms...`);
+        await new Promise(resolve => setTimeout(resolve, retryDelay));
+      }
+    }
+
+    // Request session reset when side panel opens (non-critical)
+    if (retries < maxRetries) {
+      try {
+        await router.requestSessionReset();
+        console.log('Session reset on side panel open');
+      } catch (error) {
+        // Non-critical error - log but don't block initialization
+        const errorMessage = error instanceof Error
+          ? error.message
+          : (error && typeof error === 'object' && 'message' in error)
+            ? error.message
+            : String(error);
+        console.warn('Session reset failed (non-critical):', errorMessage);
+      }
     }
 
     // Setup event handlers

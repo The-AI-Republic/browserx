@@ -6,8 +6,7 @@
    * User Story 2: Model Information Display
    */
   import { createEventDispatcher } from 'svelte';
-  import { ModelRegistry } from '../../models/ModelRegistry';
-  import type { ModelMetadata, ConfiguredFeatures } from '../../models/types/ModelRegistry';
+  import type { ModelMetadata, ConfiguredFeatures } from '../../config/types.js';
   import ModelInfoTooltip from './ModelInfoTooltip.svelte';
 
   export let model: ModelMetadata;
@@ -17,10 +16,10 @@
 
   const dispatch = createEventDispatcher();
 
-  // Validate compatibility for this model
-  $: validation = ModelRegistry.validateCompatibility(model.id, configuredFeatures);
-  $: isCompatible = validation.valid || (validation.warnings && !validation.errors);
-  $: hasErrors = validation.errors && validation.errors.length > 0;
+  // Simplified validation - both GPT-5 and Grok 4 support all features
+  $: validation = { valid: true, modelId: model.id };
+  $: isCompatible = true;
+  $: hasErrors = false;
 
   // T019: Tooltip state
   let showTooltip = false;

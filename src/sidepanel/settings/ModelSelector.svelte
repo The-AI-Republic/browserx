@@ -1,12 +1,11 @@
 <script lang="ts">
   /**
-   * T009: ModelSelector component
-   * Feature: 001-multi-model-support
-   * User Story 1: Model Selection in Settings
+   * T022, T023: ModelSelector component for multi-provider system
+   * Displays models grouped by provider with "[Model Name] - [Provider Name]" format
    */
   import { createEventDispatcher, onMount } from 'svelte';
-  import { ModelRegistry } from '../../models/ModelRegistry';
-  import type { ModelMetadata, ConfiguredFeatures } from '../../models/types/ModelRegistry';
+  import { AgentConfig } from '../../config/AgentConfig';
+  import type { IModelConfig, ConfiguredFeatures } from '../../config/types';
   import ModelOption from './ModelOption.svelte';
 
   export let selectedModel: string;
@@ -16,40 +15,29 @@
   const dispatch = createEventDispatcher();
 
   let isOpen = false;
-  let availableModels: ModelMetadata[] = [];
+  let availableModels: Array<{ model: IModelConfig; providerId: string; providerName: string }> = [];
   let focusedIndex = -1;
   let selectorRef: HTMLDivElement;
+  let agentConfig: AgentConfig | null = null;
 
-  onMount(() => {
-    availableModels = ModelRegistry.getAvailableModels();
+  onMount(async () => {
+    agentConfig = AgentConfig.getInstance();
+    await agentConfig.initialize();
+    availableModels = agentConfig.getAllModels();
   });
 
   function toggleDropdown() {
     if (disabled) return;
     isOpen = !isOpen;
     if (isOpen) {
-      focusedIndex = availableModels.findIndex(m => m.id === selectedModel);
+      focusedIndex = availableModels.findIndex(m => m.model.id === selectedModel);
     }
   }
 
   function selectModel(modelId: string) {
     if (disabled) return;
 
-    // T012: Validate before selection
-    const validation = ModelRegistry.validateCompatibility(modelId, configuredFeatures);
-
-    if (!validation.valid) {
-      // T014, T015: Block selection and show error
-      dispatch('validationError', {
-        modelId,
-        errors: validation.errors,
-        incompatibleFeatures: validation.incompatibleFeatures,
-        suggestedActions: validation.suggestedActions
-      });
-      return;
-    }
-
-    // T016: Dispatch model change event
+    // Dispatch model change event
     dispatch('modelChange', { modelId });
     isOpen = false;
   }
@@ -62,7 +50,7 @@
         event.preventDefault();
         if (!isOpen) {
           isOpen = true;
-          focusedIndex = availableModels.findIndex(m => m.id === selectedModel);
+          focusedIndex = availableModels.findIndex(m => m.model.id === selectedModel);
         } else {
           focusedIndex = Math.min(focusedIndex + 1, availableModels.length - 1);
         }
@@ -77,7 +65,7 @@
       case ' ':
         event.preventDefault();
         if (isOpen && focusedIndex >= 0) {
-          selectModel(availableModels[focusedIndex].id);
+          selectModel(availableModels[focusedIndex].model.id);
         } else {
           toggleDropdown();
         }
@@ -103,7 +91,12 @@
     }
   }
 
-  $: currentModel = ModelRegistry.getModel(selectedModel);
+  // T023: Get current model with provider name for display
+  $: currentModelData = availableModels.find(m => m.model.id === selectedModel);
+  $: currentModelDisplay = currentModelData
+    ? `${currentModelData.model.name} - ${currentModelData.providerName}`
+    : selectedModel;
+
   $: if (typeof window !== 'undefined') {
     if (isOpen) {
       document.addEventListener('click', handleClickOutside);
@@ -113,13 +106,13 @@
   }
 </script>
 
-<!-- T013: ARIA attributes -->
+<!-- T023: Model selector with "[Model Name] - [Provider Name]" format -->
 <div
   bind:this={selectorRef}
   class="model-selector relative"
   role="listbox"
   aria-expanded={isOpen}
-  aria-label="Select model: {currentModel?.displayName || selectedModel}"
+  aria-label="Select model: {currentModelDisplay}"
   aria-disabled={disabled}
   on:keydown={handleKeyDown}
   tabindex={disabled ? -1 : 0}
@@ -138,9 +131,9 @@
   >
     <span class="flex items-center gap-2">
       <span class="font-medium text-gray-100">
-        {currentModel?.displayName || selectedModel}
+        {currentModelDisplay}
       </span>
-      {#if currentModel?.deprecated}
+      {#if currentModelData?.model.deprecated}
         <span class="px-2 py-0.5 text-xs bg-yellow-500/20 text-yellow-400 rounded">
           Deprecated
         </span>
@@ -162,14 +155,32 @@
     <div
       class="absolute z-50 w-full mt-2 bg-gray-800 border border-gray-700 rounded-lg shadow-xl max-h-96 overflow-y-auto"
     >
-      {#each availableModels as model, index (model.id)}
-        <ModelOption
-          {model}
-          isSelected={model.id === selectedModel}
-          isFocused={index === focusedIndex}
-          {configuredFeatures}
-          on:click={() => selectModel(model.id)}
-        />
+      {#each availableModels as modelData, index (modelData.model.id)}
+        <button
+          type="button"
+          class="w-full px-4 py-3 text-left transition-colors border-b border-gray-700 last:border-b-0"
+          class:bg-gray-700={modelData.model.id === selectedModel}
+          class:bg-gray-750={index === focusedIndex && modelData.model.id !== selectedModel}
+          class:hover:bg-gray-700={modelData.model.id !== selectedModel}
+          on:click={() => selectModel(modelData.model.id)}
+        >
+          <div class="flex items-center justify-between">
+            <span class="font-medium text-gray-100">
+              {modelData.model.name} - {modelData.providerName}
+            </span>
+            {#if modelData.model.deprecated}
+              <span class="px-2 py-0.5 text-xs bg-yellow-500/20 text-yellow-400 rounded">
+                Deprecated
+              </span>
+            {/if}
+          </div>
+          <div class="mt-1 text-xs text-gray-400">
+            {modelData.model.contextWindow.toLocaleString()} tokens
+            {#if modelData.model.supportsReasoning}
+              • Reasoning
+            {/if}
+          </div>
+        </button>
       {/each}
     </div>
   {/if}

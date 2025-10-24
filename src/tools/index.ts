@@ -3,6 +3,7 @@
  */
 
 import { ToolRegistry } from './ToolRegistry';
+import type { IToolsConfig } from '../config/types';
 import { WebScrapingTool } from './WebScrapingTool';
 import { FormAutomationTool } from './FormAutomationTool';
 import { NetworkInterceptTool } from './NetworkInterceptTool';
@@ -12,21 +13,18 @@ import { NavigationTool } from './NavigationTool';
 import { StorageTool } from './StorageTool';
 import { TabTool } from './TabTool';
 import { PageActionTool } from './PageActionTool';
-import type { IToolsConfig } from '../config/types';
 
-// Re-export all tools
+// Re-export core tools (non-DOM tools for service worker compatibility)
 export { ToolRegistry } from './ToolRegistry';
 export { BaseTool, createFunctionTool, createObjectSchema, createToolDefinition } from './BaseTool';
 export type { ToolDefinition, JsonSchema, ResponsesApiTool, FreeformTool, FreeformToolFormat } from './BaseTool';
-export { WebScrapingTool } from './WebScrapingTool';
-export { FormAutomationTool } from './FormAutomationTool';
-export { NetworkInterceptTool } from './NetworkInterceptTool';
-export { DataExtractionTool } from './DataExtractionTool';
-export { DOMTool } from './DOMTool';
-export { NavigationTool } from './NavigationTool';
-export { StorageTool } from './StorageTool';
-export { TabTool } from './TabTool';
-export { PageActionTool } from './PageActionTool';
+
+// Tool classes are now dynamically imported in registerTools() to avoid
+// loading DOM-dependent code in service worker context at module initialization time.
+// If you need to import a specific tool, import it directly from its module:
+//   import { PageActionTool } from './tools/PageActionTool';
+//   import { DOMTool } from './tools/DOMTool';
+// etc.
 
 /**
  * Register browser automation tools based on configuration

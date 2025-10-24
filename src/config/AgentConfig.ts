@@ -12,18 +12,16 @@ import type {
   IExportData,
   IToolsConfig,
   IToolSpecificConfig,
-  IAuthConfig,
   IProviderStatus
 } from './types';
 import { ConfigValidationError } from './types';
 import { ConfigStorage } from '../storage/ConfigStorage';
 import {
-  DEFAULT_AGENT_CONFIG,
-  DEFAULT_AUTH_CONFIG,
+  getDefaultAgentConfig,
   mergeWithDefaults,
   getDefaultProviders
 } from './defaults';
-import { validateConfig, validateModelConfig, validateProviderConfig, validateAuthConfig, detectProviderFromKey } from './validators';
+import { validateConfig, validateModelConfig, validateProviderConfig, detectProviderFromKey } from './validators';
 import { encryptApiKey, decryptApiKey } from '../utils/encryption';
 
 export class AgentConfig implements IConfigService {
@@ -35,7 +33,7 @@ export class AgentConfig implements IConfigService {
 
   private constructor() {
     this.storage = new ConfigStorage();
-    this.currentConfig = DEFAULT_AGENT_CONFIG;
+    this.currentConfig = getDefaultAgentConfig();
     this.eventHandlers = new Map();
   }
 
@@ -45,7 +43,9 @@ export class AgentConfig implements IConfigService {
    */
   public static getInstance(): AgentConfig {
     if (!AgentConfig.instance) {
-      AgentConfig.instance = new AgentConfig();
+      const instance = new AgentConfig();
+      instance.initialize();
+      AgentConfig.instance = instance;
     }
     return AgentConfig.instance;
   }
@@ -64,14 +64,92 @@ export class AgentConfig implements IConfigService {
         this.currentConfig = mergeWithDefaults(storedConfig);
       } else {
         // First time setup
-        this.currentConfig = DEFAULT_AGENT_CONFIG;
-        await this.storage.set(this.currentConfig);
+        this.currentConfig = getDefaultAgentConfig();
       }
+
+      // Ensure all models have IDs and registry is populated
+      await this.ensureModelIds();
+
+      await this.storage.set(this.currentConfig);
       this.initialized = true;
     } catch (error) {
       console.error('Failed to initialize config:', error);
-      this.currentConfig = DEFAULT_AGENT_CONFIG;
+      this.currentConfig = getDefaultAgentConfig();
       this.initialized = true;
+    }
+  }
+
+  /**
+   * Generate a random 6-digit model ID that doesn't exist in the registry
+   * @private
+   * @returns Random 6-digit numeric string
+   */
+  private generateRandomModelId(): string {
+    const existingIds = new Set(Object.keys(this.currentConfig.modelRegistry));
+    let newId: string;
+    let attempts = 0;
+    const maxAttempts = 100;
+
+    do {
+      // Generate 6 random digits
+      let id = '';
+      for (let i = 0; i < 6; i++) {
+        id += Math.floor(Math.random() * 10).toString();
+      }
+      newId = id;
+      attempts++;
+
+      if (attempts >= maxAttempts) {
+        throw new Error('Failed to generate unique model ID after 100 attempts');
+      }
+    } while (existingIds.has(newId));
+
+    return newId;
+  }
+
+  /**
+   * Ensure all models have unique IDs and registry is populated
+   * Automatically generates IDs for any models missing them
+   * @private
+   */
+  private async ensureModelIds(): Promise<void> {
+    let modified = false;
+
+    // Iterate through all providers and their models
+    for (const provider of Object.values(this.currentConfig.providers)) {
+      if (!provider.models || !Array.isArray(provider.models)) {
+        continue;
+      }
+
+      for (const model of provider.models) {
+        // Generate ID if missing or empty
+        if (!model.id || model.id === '') {
+          // Generate random 6-digit ID
+          model.id = this.generateRandomModelId();
+          modified = true;
+        }
+
+        // Add to registry
+        this.currentConfig.modelRegistry[model.id] = {
+          providerId: provider.id,
+          modelKey: model.modelKey
+        };
+      }
+    }
+
+    // Ensure selectedModelId is valid, otherwise pick first available model
+    if (!this.currentConfig.selectedModelId ||
+        !this.currentConfig.modelRegistry[this.currentConfig.selectedModelId]) {
+      const firstModelId = Object.keys(this.currentConfig.modelRegistry)[0];
+      if (firstModelId) {
+        this.currentConfig.selectedModelId = firstModelId;
+        modified = true;
+      }
+    }
+
+    // Save if we made any changes
+    if (modified) {
+      await this.storage.set(this.currentConfig);
     }
   }
 
@@ -87,7 +165,7 @@ export class AgentConfig implements IConfigService {
         this.currentConfig = mergeWithDefaults(storedConfig);
       } else {
         // No stored config, use defaults
-        this.currentConfig = DEFAULT_AGENT_CONFIG;
+        this.currentConfig = getDefaultAgentConfig();
       }
     } catch (error) {
       console.error('Failed to reload config:', error);
@@ -131,7 +209,7 @@ export class AgentConfig implements IConfigService {
   resetConfig(preserveApiKeys?: boolean): IAgentConfig {
     this.ensureInitialized();
 
-    let newConfig = DEFAULT_AGENT_CONFIG;
+    let newConfig = getDefaultAgentConfig();
 
     if (preserveApiKeys && this.currentConfig.providers) {
       // Preserve API keys from existing providers
@@ -163,25 +241,83 @@ export class AgentConfig implements IConfigService {
   }
 
   // Model operations
+
+  /**
+   * Set the selected model by ID
+   * @param modelId - Model ID to select (must exist in modelRegistry)
+   * @throws Error if model ID is invalid or not found
+   * @example
+   * await agentConfig.setSelectedModel('000001');
+   */
+  async setSelectedModel(modelId: string): Promise<void> {
+    this.ensureInitialized();
+
+    // Validate model ID format
+    if (!/^\d{6}$/.test(modelId)) {
+      console.error(`[AgentConfig] Invalid model ID format: ${modelId}`);
+      throw new Error(`Invalid model ID format: ${modelId}. Expected 6-digit numeric string.`);
+    }
+
+    // Check if model exists in registry
+    const entry = this.currentConfig.modelRegistry[modelId];
+    if (!entry) {
+      console.error(`[AgentConfig] Model ID not found in registry: ${modelId}`);
+      throw new Error(`Model ID not found in registry: ${modelId}`);
+    }
+
+    // Verify provider exists
+    const provider = this.currentConfig.providers[entry.providerId];
+    if (!provider) {
+      console.error(`[AgentConfig] Provider not found: ${entry.providerId} for model ${modelId}`);
+      throw new Error(`Provider not found for model: ${entry.providerId}`);
+    }
+
+    // Verify model exists in provider
+    const model = provider.models?.find(m => m.modelKey === entry.modelKey);
+    if (!model) {
+      console.error(`[AgentConfig] Model not found in provider: ${entry.modelKey} in ${entry.providerId}`);
+      throw new Error(`Model not found in provider: ${entry.modelKey}`);
+    }
+
+    // Update selectedModelId
+    const oldModelId = this.currentConfig.selectedModelId;
+    this.currentConfig.selectedModelId = modelId;
+
+    console.log(`[AgentConfig] Model switched: ${oldModelId} → ${modelId} (${model.name} - ${provider.name})`);
+
+    await this.storage.set(this.currentConfig);
+    this.emitChangeEvent('model', oldModelId, modelId);
+  }
+
+  /**
+   * Get current model configuration
+   * Resolves selectedModelId through registry to find actual model config
+   * @returns Model configuration for currently selected model
+   * @example
+   * const model = agentConfig.getModelConfig();
+   * console.log(model.name); // "GPT-5"
+   */
   getModelConfig(): IModelConfig {
     this.ensureInitialized();
 
-    let modelConfig = { ...this.currentConfig.model };
-
-    // Apply profile overrides if active
-    if (this.currentConfig.activeProfile && this.currentConfig.profiles) {
-      const profile = this.currentConfig.profiles[this.currentConfig.activeProfile];
-      if (profile) {
-        modelConfig = {
-          ...modelConfig,
-          selected: profile.model,
-          provider: profile.provider,
-          ...(profile.modelSettings || {})
-        };
-      }
+    // Use new selectedModelId system
+    const modelData = this.getModelById(this.currentConfig.selectedModelId);
+    if (modelData) {
+      return modelData.model;
     }
 
-    return modelConfig;
+    // Fallback to legacy model config if available
+    if (this.currentConfig.model) {
+      return { ...this.currentConfig.model };
+    }
+
+    // Last resort: return first available model
+    const allModels = this.getAllModels();
+    if (allModels.length > 0) {
+      return allModels[0].model;
+    }
+
+    throw new Error('No model configuration available');
   }
 
   updateModelConfig(config: Partial<IModelConfig>): IModelConfig {
@@ -200,10 +336,7 @@ export class AgentConfig implements IConfigService {
       );
     }
 
-    // Check provider exists
-    if (newModel.provider && !this.currentConfig.providers[newModel.provider]) {
-      throw new Error(`Provider not found: ${newModel.provider}`);
-    }
+
 
     // Validate maxOutputTokens <= contextWindow
     if (newModel.maxOutputTokens && newModel.contextWindow &&
@@ -227,6 +360,11 @@ export class AgentConfig implements IConfigService {
     return { ...this.currentConfig.providers };
   }
 
+  /**
+   * T063: Add a new provider with automatic model ID assignment
+   * @param provider Provider configuration to add
+   * @returns Added provider with model IDs assigned
+   */
   addProvider(provider: IProviderConfig): IProviderConfig {
     this.ensureInitialized();
 
@@ -239,6 +377,21 @@ export class AgentConfig implements IConfigService {
       );
     }
 
+    // Auto-assign model IDs for any models without IDs
+    if (provider.models) {
+      for (const model of provider.models) {
+        if (!model.id || model.id === '') {
+          model.id = this.generateModelId();
+        }
+
+        // Add to registry
+        this.currentConfig.modelRegistry[model.id] = {
+          providerId: provider.id,
+          modelKey: model.modelKey
+        };
+      }
+    }
+
     this.currentConfig.providers[provider.id] = provider;
     this.storage.set(this.currentConfig).catch(err => {
       console.error('Failed to persist config:', err);
@@ -249,6 +402,12 @@ export class AgentConfig implements IConfigService {
     return provider;
   }
 
+  /**
+   * T064: Update a provider with automatic model ID assignment for new models
+   * @param id Provider ID to update
+   * @param provider Partial provider config with updates
+   * @returns Updated provider configuration
+   */
   updateProvider(id: string, provider: Partial<IProviderConfig>): IProviderConfig {
     this.ensureInitialized();
 
@@ -258,6 +417,21 @@ export class AgentConfig implements IConfigService {
     }
 
     const updated = { ...existing, ...provider };
+
+    // Auto-assign model IDs for any new models without IDs
+    if (updated.models) {
+      for (const model of updated.models) {
+        if (!model.id || model.id === '') {
+          model.id = this.generateModelId();
+        }
+
+        // Update registry
+        this.currentConfig.modelRegistry[model.id] = {
+          providerId: updated.id,
+          modelKey: model.modelKey
+        };
+      }
+    }
 
     const validation = validateProviderConfig(updated);
     if (!validation.valid) {
@@ -281,9 +455,10 @@ export class AgentConfig implements IConfigService {
   deleteProvider(id: string): void {
     this.ensureInitialized();
 
-    // Check if provider is currently active
-    if (this.currentConfig.model.provider === id) {
-      throw new Error('Cannot delete active provider');
+    // Check if provider hosts the currently selected model
+    const selectedModelEntry = this.currentConfig.modelRegistry[this.currentConfig.selectedModelId];
+    if (selectedModelEntry && selectedModelEntry.providerId === id) {
+      throw new Error('Cannot delete provider that hosts the currently selected model');
     }
 
     const deleted = this.currentConfig.providers[id];
@@ -314,14 +489,18 @@ export class AgentConfig implements IConfigService {
     if (!provider) {
       const defaults = getDefaultProviders();
       if (!defaults[providerId]) {
+        console.error(`[AgentConfig] Unknown provider: ${providerId}`);
         throw new Error(`Unknown provider: ${providerId}`);
       }
       provider = { ...defaults[providerId] };
+      console.log(`[AgentConfig] Creating new provider config for: ${providerId}`);
     }
 
     // Encrypt and store API key
     provider.apiKey = encryptApiKey(apiKey);
     this.currentConfig.providers[providerId] = provider;
+
+    console.log(`[AgentConfig] API key set for provider: ${providerId} (${provider.name})`);
 
     await this.storage.set(this.currentConfig);
     this.emitChangeEvent('provider', null, provider);
@@ -351,18 +530,33 @@ export class AgentConfig implements IConfigService {
       return decryptApiKey(provider.apiKey);
     }
 
-    // Backward compatibility fallback to auth.apiKey
-    if (this.currentConfig.auth?.apiKey) {
-      const decryptedKey = decryptApiKey(this.currentConfig.auth.apiKey);
-      if (decryptedKey) {
-        const detectedProvider = detectProviderFromKey(decryptedKey);
-        if (detectedProvider === providerId) {
-          return decryptedKey;
-        }
-      }
+    return null;
+  }
+
+  /**
+   * Delete API key for a specific provider
+   * @param providerId - Provider identifier (e.g., 'openai', 'xai', 'anthropic')
+   * @throws Error if provider is not found
+   * @example
+   * await agentConfig.deleteProviderApiKey('xai');
+   */
+  async deleteProviderApiKey(providerId: string): Promise<void> {
+    this.ensureInitialized();
+
+    const provider = this.currentConfig.providers[providerId];
+    if (!provider) {
+      console.error(`[AgentConfig] Cannot delete API key - provider not found: ${providerId}`);
+      throw new Error(`Provider not found: ${providerId}`);
     }
 
-    return null;
+    // Clear the API key
+    provider.apiKey = '';
+    this.currentConfig.providers[providerId] = provider;
+
+    console.log(`[AgentConfig] API key deleted for provider: ${providerId} (${provider.name})`);
+
+    await this.storage.set(this.currentConfig);
+    this.emitChangeEvent('provider', provider, { ...provider, apiKey: '' });
   }
 
   /**
@@ -390,69 +584,97 @@ export class AgentConfig implements IConfigService {
   getConfiguredProviders(): string[] {
     this.ensureInitialized();
     return Object.keys(this.currentConfig.providers).filter(
-      id => this.currentConfig.providers[id].apiKey && this.currentConfig.providers[id].apiKey !== ''
+      id => this.currentConfig.providers[id].apiKey
     );
   }
 
   /**
-   * Switch active provider
-   * @param providerId - Provider identifier to switch to
-   * @throws Error if provider not found or no API key configured
-   * @remarks Conversation blocking should be handled in UI layer
+   * Generate a unique 6-digit model ID using random generation
+   * @returns Random 6-digit numeric string (e.g., "847291", "103847")
    * @example
-   * await agentConfig.switchProvider('xai');
-   * // Model.provider is now 'xai'
+   * const modelId = agentConfig.generateModelId();
+   * console.log(modelId); // "847291"
    */
-  async switchProvider(providerId: string): Promise<void> {
+  generateModelId(): string {
     this.ensureInitialized();
 
-    // Check if provider exists and has API key
-    const provider = this.currentConfig.providers[providerId];
-    if (!provider) {
-      throw new Error(`Provider not found: ${providerId}`);
-    }
+    // Generate random 6-digit ID that doesn't conflict with existing IDs
+    const newId = this.generateRandomModelId();
 
-    const apiKey = await this.getProviderApiKey(providerId);
-    if (!apiKey) {
-      throw new Error(`No API key configured for provider: ${providerId}`);
-    }
+    // Persist the config (registry has been updated)
+    this.storage.set(this.currentConfig).catch(err => {
+      console.error('Failed to persist config after ID generation:', err);
+    });
 
-    // Check for active conversation (will be implemented in UI layer)
-    // For now, just update the provider
-
-    const oldModel = this.currentConfig.model;
-    this.currentConfig.model.provider = providerId;
-
-    await this.storage.set(this.currentConfig);
-    this.emitChangeEvent('model', oldModel, this.currentConfig.model);
+    return newId;
   }
 
   /**
-   * Get provider status information
-   * @param providerId - Provider identifier
-   * @returns Provider status with configuration and active state
+   * Get model by ID
+   * Resolves model ID through registry to find actual model config
+   * @param modelId - Model ID to lookup
+   * @returns Model config with provider context, or null if not found
    * @example
-   * const status = agentConfig.getProviderStatus('xai');
-   * if (status.configured && status.active) {
-   *   console.log('xAI is configured and currently active');
+   * const result = agentConfig.getModelById('000001');
+   * if (result) {
+   *   console.log(result.model.name); // "GPT-5"
+   *   console.log(result.provider.name); // "OpenAI"
    * }
    */
-  getProviderStatus(providerId: string): IProviderStatus {
+  getModelById(modelId: string): { model: IModelConfig; provider: IProviderConfig } | null {
     this.ensureInitialized();
 
-    const provider = this.currentConfig.providers[providerId];
-    const hasApiKey = !!(provider?.apiKey && provider.apiKey !== '');
-    const isActive = this.currentConfig.model.provider === providerId;
+    const entry = this.currentConfig.modelRegistry[modelId];
+    if (!entry) return null;
 
-    return {
-      id: providerId,
-      name: provider?.name || providerId,
-      configured: hasApiKey,
-      active: isActive,
-      lastUsed: undefined,
-      requestCount: undefined
-    };
+    const provider = this.currentConfig.providers[entry.providerId];
+    if (!provider) return null;
+
+    const model = provider.models?.find(m => m.modelKey === entry.modelKey);
+    if (!model) return null;
+
+    return { model, provider };
   }
+
+  /**
+   * Get all models across all providers
+   * Flattens models from all providers into single array with provider context
+   * @returns Array of models with provider info
+   * @example
+   * const allModels = agentConfig.getAllModels();
+   * allModels.forEach(({ model, provider }) => {
+   *   console.log(`${model.name} - ${provider.name}`);
+   * });
+   */
+  getAllModels(): Array<{
+    model: IModelConfig;
+    providerId: string;
+    providerName: string;
+  }> {
+    this.ensureInitialized();
+
+    const models: Array<{
+      model: IModelConfig;
+      providerId: string;
+      providerName: string;
+    }> = [];
+
+    for (const [providerId, provider] of Object.entries(this.currentConfig.providers)) {
+      if (provider.models) {
+        for (const model of provider.models) {
+          models.push({
+            model,
+            providerId,
+            providerName: provider.name
+          });
+        }
+      }
+    }
+
+    return models;
+  }
+
+
 
   /**
    * Detect provider from API key format
@@ -466,71 +688,6 @@ export class AgentConfig implements IConfigService {
   async detectProviderFromKey(apiKey: string): Promise<string> {
   return detectProviderFromKey(apiKey);
   }
-
-  // Authentication management
-  /**
-   * Get authentication configuration
-   * @returns Current auth config or defaults if not set
-   * @example
-   * const authConfig = agentConfig.getAuthConfig();
-   * if (authConfig.apiKey) {
-   *   console.log('API key is configured');
-   * }
-   */
-  getAuthConfig(): IAuthConfig {
-    this.ensureInitialized();
-    return this.currentConfig.auth || DEFAULT_AUTH_CONFIG;
-  }
-
-  /**
-   * Update authentication configuration
-   * @param config - Partial auth config to update
-   * @returns Updated complete auth config
-   * @throws {ConfigValidationError} If validation fails
-   * @remarks Automatically sets lastUpdated timestamp and persists to storage
-   * @example
-   * // Update API key
-   * agentConfig.updateAuthConfig({
-   *   apiKey: encryptApiKey('sk-ant-api03-...'),
-   *   authMode: AuthMode.ApiKey
-   * });
-   *
-   * // Clear auth
-   * agentConfig.updateAuthConfig({
-   *   apiKey: '',
-   *   accountId: null,
-   *   planType: null
-   * });
-   */
-  updateAuthConfig(config: Partial<IAuthConfig>): IAuthConfig {
-    this.ensureInitialized();
-
-    const oldAuth = this.getAuthConfig();
-    const newAuth = {
-      ...oldAuth,
-      ...config,
-      lastUpdated: Date.now()
-    };
-
-    const validation = validateAuthConfig(newAuth);
-    if (!validation.valid) {
-      throw new ConfigValidationError(
-        validation.field || 'auth',
-        validation.value,
-        validation.error || 'Invalid auth configuration'
-      );
-    }
-
-    this.currentConfig.auth = newAuth;
-    this.storage.set(this.currentConfig).catch(err => {
-      console.error('Failed to persist config:', err);
-    });
-
-    this.emitChangeEvent('auth' as any, oldAuth, newAuth);
-
-    return newAuth;
-  }
-
 
   // Profile management
   getProfiles(): Record<string, IProfileConfig> {

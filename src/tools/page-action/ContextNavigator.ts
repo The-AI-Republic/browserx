@@ -170,6 +170,10 @@ export class ContextNavigator {
    * @returns true if element is in iframe context
    */
   isInIframe(element: Element): boolean {
+    // Check if window is available (not in service worker context)
+    if (typeof window === 'undefined') {
+      return false;
+    }
     return window !== window.top;
   }
 

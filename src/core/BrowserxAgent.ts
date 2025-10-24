@@ -40,7 +40,7 @@ export class BrowserxAgent {
     this.config = config || AgentConfig.getInstance();
 
     // Initialize components with config
-    this.modelClientFactory = ModelClientFactory.getInstance();
+    this.modelClientFactory = new ModelClientFactory();
     this.toolRegistry = new ToolRegistry();
     this.approvalManager = new ApprovalManager(this.config);
     this.diffTracker = new DiffTracker();
@@ -635,6 +635,13 @@ export class BrowserxAgent {
     return this.session;
   }
 
+
+  /**
+   * Get the model client factory
+   */
+  getModelClientFactory(): ModelClientFactory {
+    return this.modelClientFactory;
+  }
 
   /**
    * Get the tool registry

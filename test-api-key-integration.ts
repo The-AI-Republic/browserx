@@ -19,7 +19,7 @@ async function testIntegration() {
   console.log('2. Retrieved from ChromeAuthManager:', retrievedKey ? 'Success' : 'Failed');
 
   // Now test ModelClientFactory
-  const factory = ModelClientFactory.getInstance();
+  const factory = new ModelClientFactory();
 
   console.log('3. Testing ModelClientFactory.loadApiKey() for OpenAI...');
   const loadedOpenAIKey = await factory.loadApiKey('openai');

@@ -9,14 +9,17 @@
   import { encryptApiKey, decryptApiKey } from '../utils/encryption.js';
   import { AuthMode } from '../models/types/index.js';
   import ModelSelector from './settings/ModelSelector.svelte';
-  import type { ConfiguredFeatures } from '../models/types/ModelRegistry';
+  import type { ConfiguredFeatures } from '../config/types.js';
 
   // Component state
   let apiKey = '';
   let maskedApiKey = '';
   let showApiKey = false;
-  let isLoading = false;
+  let isInitializing = true;
+  let isSaving = false;
   let isTesting = false;
+  let isModelSwitching = false;
+  let isClearingAuth = false;
   let saveMessage = '';
   let saveMessageType: 'success' | 'error' | 'info' | '' = '';
   let testResult: { valid: boolean; error?: string } | null = null;
@@ -55,29 +58,38 @@
 
   /**
    * T042: Load existing settings from AgentConfig
-   * Updated to load provider-specific API key
+   * Updated to use selectedModelId system
    */
   async function loadSettings() {
     try {
-      isLoading = true;
+      isInitializing = true;
 
       if (!agentConfig) {
         throw new Error('AgentConfig not initialized');
       }
 
-      // T011: Load model config first to get current provider
-      const modelConfig = agentConfig.getModelConfig();
-      selectedModel = modelConfig.selected || 'gpt-5';
-      currentProvider = modelConfig.provider || 'openai';
-      configuredFeatures = {
-        reasoningEffort: modelConfig.reasoningEffort,
-        reasoningSummary: modelConfig.reasoningSummary,
-        verbosity: modelConfig.verbosity,
-        contextWindow: modelConfig.contextWindow,
-        maxOutputTokens: modelConfig.maxOutputTokens
-      };
+      // Load selectedModelId and resolve to get model and provider info
+      const config = agentConfig.getConfig();
+      selectedModel = config.selectedModelId;
 
-      // T042: Load API key for current provider
+      // Get model and provider from registry
+      const modelData = agentConfig.getModelById(selectedModel);
+      if (modelData) {
+        currentProvider = modelData.provider.id;
+        configuredFeatures = {
+          reasoningEffort: null,
+          reasoningSummary: undefined,
+          verbosity: null,
+          contextWindow: modelData.model.contextWindow,
+          maxOutputTokens: modelData.model.maxOutputTokens
+        };
+      } else {
+        // Fallback
+        currentProvider = 'openai';
+        configuredFeatures = {};
+      }
+
+      // Load API key for current provider
       const providerApiKey = await agentConfig.getProviderApiKey(currentProvider);
       if (providerApiKey) {
         apiKey = providerApiKey;
@@ -85,29 +97,17 @@
         isAuthenticated = true;
         currentAuthMode = AuthMode.ApiKey;
       } else {
-        // Fallback to legacy auth config
-        const authConfig = agentConfig.getAuthConfig();
-        if (authConfig.apiKey) {
-          const decryptedKey = decryptApiKey(authConfig.apiKey);
-          if (decryptedKey) {
-            apiKey = decryptedKey;
-            maskedApiKey = maskApiKey(decryptedKey);
-            isAuthenticated = true;
-            currentAuthMode = authConfig.authMode;
-          }
-        } else {
-          isAuthenticated = false;
-          currentAuthMode = null;
-        }
+        isAuthenticated = false;
+        currentAuthMode = null;
       }
 
-      // T044: Load configured providers
+      // Load configured providers
       configuredProviders = agentConfig.getConfiguredProviders();
     } catch (error) {
       console.error('Failed to load settings:', error);
       showMessage('Failed to load settings', 'error');
     } finally {
-      isLoading = false;
+      isInitializing = false;
     }
   }
 
@@ -148,6 +148,10 @@
    * T024, T025, T026: Validate and save API key with provider-aware validation
    */
   async function saveApiKey() {
+    if (isSaving) {
+      return;
+    }
+
     if (!apiKey.trim()) {
       showMessage('Please enter an API key', 'error');
       return;
@@ -159,7 +163,7 @@
     }
 
     try {
-      isLoading = true;
+      isSaving = true;
 
       // T024: Validate API key format using provider-aware validation
       const { validateApiKeyFormat } = await import('../config/validators');
@@ -178,7 +182,6 @@
         providerValidationWarning = '';
       }
 
-      // T026: Use setProviderApiKey instead of updateAuthConfig
       await agentConfig.setProviderApiKey(currentProvider, apiKey);
 
       // Update component state
@@ -208,7 +211,7 @@
       console.error('Failed to save API key:', error);
       showMessage('Failed to save API key', 'error');
     } finally {
-      isLoading = false;
+      isSaving = false;
     }
   }
 
@@ -304,10 +307,10 @@
   }
 
   /**
-   * Clear stored authentication
+   * T040: Clear stored authentication for current provider
    */
   async function clearAuth() {
-    if (!confirm('Are you sure you want to remove your API key? You will need to enter it again to use the extension.')) {
+    if (!confirm(`Are you sure you want to remove your ${currentProvider === 'openai' ? 'OpenAI' : currentProvider === 'xai' ? 'xAI' : currentProvider === 'anthropic' ? 'Anthropic' : currentProvider} API key? You will need to enter it again to use this provider.`)) {
       return;
     }
 
@@ -317,15 +320,10 @@
     }
 
     try {
-      isLoading = true;
+      isClearingAuth = true;
 
-      // Clear auth config via AgentConfig
-      agentConfig.updateAuthConfig({
-        apiKey: '',
-        authMode: AuthMode.ApiKey,
-        accountId: null,
-        planType: null
-      });
+      // Delete provider-specific API key
+      await agentConfig.deleteProviderApiKey(currentProvider);
 
       // Reset component state
       apiKey = '';
@@ -334,7 +332,10 @@
       currentAuthMode = null;
       testResult = null;
 
-      showMessage('API key removed successfully', 'info');
+      // Update configured providers list
+      configuredProviders = agentConfig.getConfiguredProviders();
+
+      showMessage(`${currentProvider === 'openai' ? 'OpenAI' : currentProvider === 'xai' ? 'xAI' : currentProvider === 'anthropic' ? 'Anthropic' : currentProvider} API key removed successfully`, 'info');
 
       // Send message to service worker to reload config and recreate BrowserxAgent
       chrome.runtime.sendMessage({
@@ -353,7 +354,7 @@
       console.error('Failed to clear auth:', error);
       showMessage('Failed to remove API key', 'error');
     } finally {
-      isLoading = false;
+      isClearingAuth = false;
     }
   }
 
@@ -388,6 +389,10 @@
    */
   function handleKeydown(event: KeyboardEvent) {
     if (event.key === 'Enter') {
+      if (isSaving || isModelSwitching || isClearingAuth || isInitializing) {
+        event.preventDefault();
+        return;
+      }
       saveApiKey();
     }
   }
@@ -406,66 +411,59 @@
   }
 
   /**
-   * T011, T016: Handle model selection change
-   * T022: Update provider when model changes
-   * T039-T041: Block model change during active conversation
+   * T024: Handle model selection change using selectedModelId system
+   * T025: Update currentProvider reactively based on selectedModelId
+   * T026: Async API key loading to prevent UI freezing
    */
   async function handleModelChange(event: CustomEvent<{ modelId: string }>) {
     if (!agentConfig) return;
 
     try {
-      isLoading = true;
+      isModelSwitching = true;
       const { modelId } = event.detail;
 
-      // T039, T041: Check if there's an active conversation
+      // Check if there's an active conversation
       const conversationActive = await isConversationActive();
+      // test>>
+      console.log('$$$ conversationActive', conversationActive);
+      // test<<
       if (conversationActive) {
-        // T040: Display warning and block the change
         showMessage('Cannot change model during an active conversation. Please end the conversation first.', 'error');
-        isLoading = false;
+        isModelSwitching = false;
         return;
       }
 
-      // T022: Get provider from model metadata
-      const { ModelRegistry } = await import('../models/ModelRegistry');
-      const modelMetadata = ModelRegistry.getModel(modelId);
-      const newProvider = modelMetadata?.provider || 'openai';
+      // Use new setSelectedModel() method
+      await agentConfig.setSelectedModel(modelId);
 
-      // Update model config with new provider
-      const modelConfig = agentConfig.getModelConfig();
-      agentConfig.updateModelConfig({
-        ...modelConfig,
-        selected: modelId,
-        provider: newProvider
-      });
+      // Get model and provider info from registry
+      const modelData = agentConfig.getModelById(modelId);
+      if (!modelData) {
+        throw new Error('Model not found in registry');
+      }
 
       selectedModel = modelId;
-      currentProvider = newProvider;
+      currentProvider = modelData.provider.id;
       modelValidationError = '';
-
-      // Clear any previous provider validation warnings
       providerValidationWarning = '';
 
-      // Check if the new provider has an API key configured
-      const providerApiKey = await agentConfig.getProviderApiKey(newProvider);
+      // T026: Async load API key for new provider (non-blocking)
+      const providerApiKey = await agentConfig.getProviderApiKey(currentProvider);
 
       if (providerApiKey) {
-        // API key exists, trigger session reinitialization
-        showMessage('Model changed successfully. Session will be reinitialized.', 'success');
-        chrome.runtime.sendMessage({ type: 'CONFIG_UPDATE' });
-
-        // Update UI to show the API key for this provider
+        // API key exists, update UI
         apiKey = providerApiKey;
         maskedApiKey = maskApiKey(providerApiKey);
         isAuthenticated = true;
+        showMessage(`Model changed to ${modelData.model.name}. Session will be reinitialized.`, 'success');
+        chrome.runtime.sendMessage({ type: 'CONFIG_UPDATE' });
       } else {
-        // No API key yet, just update the selection
-        showMessage(`Model changed to ${modelMetadata?.displayName || modelId}. Please configure your ${newProvider === 'openai' ? 'OpenAI' : newProvider === 'xai' ? 'xAI' : newProvider === 'anthropic' ? 'Anthropic' : newProvider} API key below.`, 'info');
-
-        // Clear API key field to show it needs to be configured
+        // No API key, prompt user
+        const providerName = modelData.provider.name;
         apiKey = '';
         maskedApiKey = '';
         isAuthenticated = false;
+        showMessage(`Model changed to ${modelData.model.name}. Please configure your ${providerName} API key below.`, 'info');
       }
 
       // Update configured providers list
@@ -476,10 +474,14 @@
       showMessage(`Failed to change model: ${errorMessage}`, 'error');
 
       // Revert model selection on error
-      selectedModel = agentConfig.getModelConfig().selected || 'gpt-5';
-      currentProvider = agentConfig.getModelConfig().provider || 'openai';
+      const config = agentConfig.getConfig();
+      selectedModel = config.selectedModelId;
+      const modelData = agentConfig.getModelById(selectedModel);
+      if (modelData) {
+        currentProvider = modelData.provider.id;
+      }
     } finally {
-      isLoading = false;
+      isModelSwitching = false;
     }
   }
 
@@ -515,7 +517,7 @@
         <ModelSelector
           {selectedModel}
           {configuredFeatures}
-          disabled={isLoading}
+          disabled={isInitializing || isSaving}
           on:modelChange={handleModelChange}
           on:validationError={handleValidationError}
         />
@@ -596,7 +598,7 @@
               on:keydown={handleKeydown}
               placeholder={isAuthenticated ? maskedApiKey : (currentProvider === 'xai' ? 'xai-...' : currentProvider === 'anthropic' ? 'sk-ant-...' : 'sk-...')}
               class="api-key-input"
-              disabled={isLoading}
+              disabled={isInitializing || isSaving}
               autocomplete="off"
               spellcheck="false"
             />
@@ -609,7 +611,7 @@
               on:keydown={handleKeydown}
               placeholder={isAuthenticated ? maskedApiKey : (currentProvider === 'xai' ? 'xai-...' : currentProvider === 'anthropic' ? 'sk-ant-...' : 'sk-...')}
               class="api-key-input"
-              disabled={isLoading}
+              disabled={isInitializing || isSaving}
               autocomplete="off"
               spellcheck="false"
             />
@@ -643,6 +645,17 @@
           {/if}
         </div>
 
+        {#if !apiKey.trim()}
+          <div class="message warning">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor">
+              <circle cx="12" cy="12" r="10"></circle>
+              <line x1="12" y1="8" x2="12" y2="12"></line>
+              <line x1="12" y1="16" x2="12.01" y2="16"></line>
+            </svg>
+            Please input a valid API key.
+          </div>
+        {/if}
+
         {#if providerValidationWarning}
           <div class="message warning">
             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor">
@@ -660,9 +673,9 @@
         <button
           class="btn btn-primary"
           on:click={saveApiKey}
-          disabled={isLoading || !apiKey.trim()}
+          disabled={isInitializing || isSaving || !apiKey.trim()}
         >
-          {#if isLoading}
+          {#if isSaving}
             <svg class="spinner" width="16" height="16" viewBox="0 0 24 24">
               <circle cx="12" cy="12" r="10" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-dasharray="31.416" stroke-dashoffset="31.416">
                 <animate attributeName="stroke-dasharray" dur="2s" values="0 31.416;15.708 15.708;0 31.416" repeatCount="indefinite"/>
@@ -697,7 +710,7 @@
           <button
             class="btn btn-danger"
             on:click={clearAuth}
-            disabled={isLoading}
+            disabled={isInitializing || isSaving}
           >
             Remove API Key
           </button>

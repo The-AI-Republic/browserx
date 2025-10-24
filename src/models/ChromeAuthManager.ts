@@ -23,25 +23,17 @@ export class ChromeAuthManager implements AuthManager {
 
   /**
    * Initialize auth manager by loading stored data
-   * Note: Assumes AgentConfig is already initialized at application startup
+   * Note: ChromeAuthManager is deprecated. Use provider-specific API keys instead.
+   * @deprecated Use AgentConfig.getProviderApiKey() for provider-specific API keys
    */
   private async initialize(): Promise<void> {
     try {
-      // Load auth config from AgentConfig (assumes already initialized)
-      const authConfig = this.agentConfig.getAuthConfig();
-
-      if (authConfig.apiKey) {
-        // Decrypt the API key
-        const apiKey = decryptApiKey(authConfig.apiKey);
-        if (apiKey) {
-          this.currentAuth = {
-            mode: authConfig.authMode,
-            token: apiKey,
-            account_id: authConfig.accountId || undefined,
-            plan_type: authConfig.planType || undefined
-          };
-        }
-      }
+      // DEPRECATED: This manager is for backward compatibility only
+      // New code should use provider-specific API keys from AgentConfig
+      console.warn('ChromeAuthManager is deprecated. Use provider-specific API keys instead.');
+      
+      // Initialize with empty auth for backward compatibility
+      this.currentAuth = null;
     } catch (error) {
       console.error('Failed to initialize ChromeAuthManager:', error);
     }

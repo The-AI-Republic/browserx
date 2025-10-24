@@ -126,7 +126,7 @@ function setupMessageHandlers(): void {
   
   // Handle ping/pong for connection testing
   router.on(MessageType.PING, async () => {
-    return { type: MessageType.PONG, timestamp: Date.now() };
+    return { success: true, data: { type: MessageType.PONG, timestamp: Date.now() } };
   });
 
   // Handle session reset
@@ -144,7 +144,7 @@ function setupMessageHandlers(): void {
       await session.reset();
 
       console.log('Session reset complete');
-      return { type: MessageType.SESSION_RESET_COMPLETE, timestamp: Date.now() };
+      return { success: true, data: { type: MessageType.SESSION_RESET_COMPLETE, timestamp: Date.now() } };
     }
     return { success: false, error: 'Agent not initialized' };
   });
@@ -160,16 +160,6 @@ function setupMessageHandlers(): void {
     const { key, value } = message.payload;
     await chrome.storage.local.set({ [key]: value });
     return { success: true };
-  });
-
-  // Handle model client messages
-  router.on(MessageType.MODEL_REQUEST, async (message) => {
-    if (!agent) throw new Error('Agent not initialized');
-
-    const { config, prompt } = message.payload;
-    const modelClientFactory = ModelClientFactory.getInstance();
-    const client = await modelClientFactory.createClient(config);
-    return await client.complete(prompt);
   });
 
   // Handle tool execution messages
@@ -760,6 +750,22 @@ chrome.runtime.onSuspend.addListener(async () => {
   // Reset initialization flag so it can be re-initialized if the service worker restarts
   isInitialized = false;
   initializationPromise = null;
+});
+
+// Ensure initialization happens when messages arrive
+// This handles cases where the service worker wakes up from sleep
+chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
+  // Initialize if not already initialized
+  if (!isInitialized && !initializationPromise) {
+    console.log('Message received before initialization, initializing now...');
+    initialize().then(() => {
+      // Don't send response here - let the MessageRouter handle it
+    }).catch(err => {
+      console.error('Failed to initialize on message:', err);
+    });
+  }
+  // Return true to indicate we will send response asynchronously
+  return true;
 });
 
 // Initialize on script load

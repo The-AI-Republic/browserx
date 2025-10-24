@@ -33,7 +33,6 @@ import type { TokenUsage } from './types/TokenUsage';
 import { SSEEventParser } from './SSEEventParser';
 import { RequestQueue, RequestPriority, type QueuedRequest } from './RequestQueue';
 import { get_full_instructions, get_formatted_input } from './PromptHelpers';
-import { ModelRegistry } from './ModelRegistry';
 
 /**
  * SSE Event structure from OpenAI Responses API
@@ -171,10 +170,16 @@ export class OpenAIResponsesClient extends ModelClient {
     this.currentModel = model;
   }
 
-  // Use ModelRegistry for dynamic context window lookup
+  // Return context window from modelFamily configuration
   getModelContextWindow(): number | undefined {
-    const modelMetadata = ModelRegistry.getModel(this.currentModel);
-    return modelMetadata?.contextWindow;
+    // Use default context windows based on model key
+    if (this.currentModel === 'gpt-5') {
+      return 200000;
+    } else if (this.currentModel === 'grok-4-fast-reasoning') {
+      return 131072;
+    }
+    // Default fallback
+    return 128000;
   }
 
   getAutoCompactTokenLimit(): number | undefined {

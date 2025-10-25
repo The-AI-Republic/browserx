@@ -190,24 +190,16 @@ export class ModelClientFactory {
    * Uses AgentConfig.modelRegistry as primary source
    * @param model The model name (modelKey)
    * @returns The provider for the model
+   * @deprecated Use createClientForCurrentModel() instead for proper registry lookup
    */
   getProviderForModel(model: string): ModelProvider {
     if (model === 'default') {
       return 'openai';
     }
 
-    // Try to import AgentConfig and check registry
+    // Try to infer from model name patterns as heuristic fallback
+    // This method is deprecated and should not be used for new code
     try {
-      // Note: This is a synchronous method but AgentConfig might be async
-      // For now, fall back to heuristics. Full registry integration requires async refactor.
-
-      // Check deprecated static map first for backward compatibility
-      const provider = MODEL_PROVIDER_MAP[model];
-      if (provider) {
-        return provider;
-      }
-
-      // Try to infer from model name patterns
       if (model.startsWith('gpt-')) {
         return 'openai';
       }
@@ -218,7 +210,7 @@ export class ModelClientFactory {
         return 'anthropic';
       }
 
-      throw new ModelClientError(`Unknown model: ${model}. Supported providers: OpenAI, xAI. Use createClientForCurrentModel() instead.`);
+      throw new ModelClientError(`Unknown model: ${model}. Supported providers: OpenAI, xAI, Anthropic. Use createClientForCurrentModel() instead.`);
     } catch (error) {
       throw new ModelClientError(`Failed to determine provider for model: ${model}. ${error}`);
     }
@@ -227,12 +219,20 @@ export class ModelClientFactory {
   /**
    * Get all supported models for a provider
    * @param provider The provider
-   * @returns Array of model names
+   * @returns Array of model keys
+   * @deprecated Use AgentConfig.getAllModels() instead for proper registry lookup
    */
   getSupportedModels(provider: ModelProvider): string[] {
-    return Object.entries(MODEL_PROVIDER_MAP)
-      .filter(([, p]) => p === provider)
-      .map(([model]) => model);
+    if (!this.config) {
+      return [];
+    }
+
+    const providerConfig = this.config.getProvider(provider);
+    if (!providerConfig || !providerConfig.models) {
+      return [];
+    }
+
+    return providerConfig.models.map(m => m.modelKey);
   }
 
   /**

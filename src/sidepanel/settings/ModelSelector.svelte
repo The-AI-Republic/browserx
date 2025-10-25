@@ -1,36 +1,37 @@
 <script lang="ts">
   /**
-   * T022, T023: ModelSelector component for multi-provider system
+   * ModelSelector component for multi-provider system
    * Displays models grouped by provider with "[Model Name] - [Provider Name]" format
+   * Now uses pre-built modelSelectionItems from parent
    */
-  import { createEventDispatcher, onMount } from 'svelte';
-  import { AgentConfig } from '../../config/AgentConfig';
-  import type { IModelConfig, ConfiguredFeatures } from '../../config/types';
-  import ModelOption from './ModelOption.svelte';
+  import { createEventDispatcher } from 'svelte';
+  import type { ConfiguredFeatures } from '../../config/types';
 
+  // Props
   export let selectedModel: string;
-  export let configuredFeatures: ConfiguredFeatures;
+  export let modelSelectionItems: Array<{
+    modelId: string;
+    modelName: string;
+    modelKey: string;
+    providerId: string;
+    providerName: string;
+    apiKey: string | null;
+    contextWindow: number;
+    maxOutputTokens: number;
+  }> = [];
   export let disabled = false;
 
   const dispatch = createEventDispatcher();
 
   let isOpen = false;
-  let availableModels: Array<{ model: IModelConfig; providerId: string; providerName: string }> = [];
   let focusedIndex = -1;
   let selectorRef: HTMLDivElement;
-  let agentConfig: AgentConfig | null = null;
-
-  onMount(async () => {
-    agentConfig = AgentConfig.getInstance();
-    await agentConfig.initialize();
-    availableModels = agentConfig.getAllModels();
-  });
 
   function toggleDropdown() {
     if (disabled) return;
     isOpen = !isOpen;
     if (isOpen) {
-      focusedIndex = availableModels.findIndex(m => m.model.id === selectedModel);
+      focusedIndex = modelSelectionItems.findIndex(m => m.modelId === selectedModel);
     }
   }
 
@@ -50,9 +51,9 @@
         event.preventDefault();
         if (!isOpen) {
           isOpen = true;
-          focusedIndex = availableModels.findIndex(m => m.model.id === selectedModel);
+          focusedIndex = modelSelectionItems.findIndex(m => m.modelId === selectedModel);
         } else {
-          focusedIndex = Math.min(focusedIndex + 1, availableModels.length - 1);
+          focusedIndex = Math.min(focusedIndex + 1, modelSelectionItems.length - 1);
         }
         break;
       case 'ArrowUp':
@@ -65,7 +66,7 @@
       case ' ':
         event.preventDefault();
         if (isOpen && focusedIndex >= 0) {
-          selectModel(availableModels[focusedIndex].model.id);
+          selectModel(modelSelectionItems[focusedIndex].modelId);
         } else {
           toggleDropdown();
         }
@@ -80,7 +81,7 @@
         break;
       case 'End':
         event.preventDefault();
-        if (isOpen) focusedIndex = availableModels.length - 1;
+        if (isOpen) focusedIndex = modelSelectionItems.length - 1;
         break;
     }
   }
@@ -91,11 +92,20 @@
     }
   }
 
-  // T023: Get current model with provider name for display
-  $: currentModelData = availableModels.find(m => m.model.id === selectedModel);
+  // Get current model with provider name for display
+  $: currentModelData = modelSelectionItems.find(m => m.modelId === selectedModel);
   $: currentModelDisplay = currentModelData
-    ? `${currentModelData.model.name} - ${currentModelData.providerName}`
-    : selectedModel;
+    ? `${currentModelData.modelName} - ${currentModelData.providerName}`
+    : modelSelectionItems.length > 0
+      ? `Unknown model (${selectedModel})`
+      : 'No models available';
+
+  // Debug logging for prop changes
+  $: {
+    console.log('[ModelSelector] selectedModel prop changed to:', selectedModel);
+    console.log('[ModelSelector] currentModelData:', currentModelData);
+    console.log('[ModelSelector] currentModelDisplay:', currentModelDisplay);
+  }
 
   $: if (typeof window !== 'undefined') {
     if (isOpen) {
@@ -133,11 +143,6 @@
       <span class="font-medium text-gray-100">
         {currentModelDisplay}
       </span>
-      {#if currentModelData?.model.deprecated}
-        <span class="px-2 py-0.5 text-xs bg-yellow-500/20 text-yellow-400 rounded">
-          Deprecated
-        </span>
-      {/if}
     </span>
     <svg
       class="w-5 h-5 text-gray-400 transition-transform"
@@ -155,30 +160,27 @@
     <div
       class="absolute z-50 w-full mt-2 bg-gray-800 border border-gray-700 rounded-lg shadow-xl max-h-96 overflow-y-auto"
     >
-      {#each availableModels as modelData, index (modelData.model.id)}
+      {#each modelSelectionItems as item, index (item.modelId)}
         <button
           type="button"
           class="w-full px-4 py-3 text-left transition-colors border-b border-gray-700 last:border-b-0"
-          class:bg-gray-700={modelData.model.id === selectedModel}
-          class:bg-gray-750={index === focusedIndex && modelData.model.id !== selectedModel}
-          class:hover:bg-gray-700={modelData.model.id !== selectedModel}
-          on:click={() => selectModel(modelData.model.id)}
+          class:bg-gray-700={item.modelId === selectedModel}
+          class:bg-gray-750={index === focusedIndex && item.modelId !== selectedModel}
+          class:hover:bg-gray-700={item.modelId !== selectedModel}
+          on:click={() => selectModel(item.modelId)}
         >
           <div class="flex items-center justify-between">
             <span class="font-medium text-gray-100">
-              {modelData.model.name} - {modelData.providerName}
+              {item.modelName} - {item.providerName}
             </span>
-            {#if modelData.model.deprecated}
-              <span class="px-2 py-0.5 text-xs bg-yellow-500/20 text-yellow-400 rounded">
-                Deprecated
+            {#if item.apiKey}
+              <span class="px-2 py-0.5 text-xs bg-green-500/20 text-green-400 rounded">
+                Configured
               </span>
             {/if}
           </div>
           <div class="mt-1 text-xs text-gray-400">
-            {modelData.model.contextWindow.toLocaleString()} tokens
-            {#if modelData.model.supportsReasoning}
-              • Reasoning
-            {/if}
+            {item.contextWindow.toLocaleString()} tokens
           </div>
         </button>
       {/each}

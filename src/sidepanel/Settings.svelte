@@ -27,7 +27,7 @@
   let currentAuthMode: AuthMode | null = null;
 
   // T011: Model configuration state
-  let selectedModel = 'gpt-5';
+  let selectedModelId = '';
   let configuredFeatures: ConfiguredFeatures = {};
   let modelValidationError = '';
 
@@ -38,8 +38,21 @@
   // T044: Provider status tracking
   let configuredProviders: string[] = [];
 
-  // AgentConfig instance for this component
-  let agentConfig: AgentConfig | null = null;
+  // Model selection array with all info (modelId, modelName, providerId, providerName, apiKey)
+  interface ModelSelectionItem {
+    modelId: string;
+    modelName: string;
+    modelKey: string;
+    providerId: string;
+    providerName: string;
+    apiKey: string | null;
+    contextWindow: number;
+    maxOutputTokens: number;
+  }
+  let modelSelectionItems: ModelSelectionItem[] = [];
+
+  // Settings component has its own AgentConfig instance (not shared with agent)
+  let settingsConfig: AgentConfig | null = null;
 
   // Event dispatcher for parent components
   const dispatch = createEventDispatcher<{
@@ -48,63 +61,100 @@
   }>();
 
   // Load existing settings on mount
+  // Create isolated AgentConfig instance for Settings (not shared with agent)
   onMount(async () => {
-    // Create and initialize AgentConfig instance
-    agentConfig = AgentConfig.getInstance();
-    await agentConfig.initialize();
-
     await loadSettings();
   });
 
   /**
-   * T042: Load existing settings from AgentConfig
-   * Updated to use selectedModelId system
+   * Load settings from chrome.storage.local with isolated AgentConfig
+   * This creates a new AgentConfig instance that is NOT shared with the agent
    */
   async function loadSettings() {
     try {
       isInitializing = true;
+      console.log('[Settings] Creating isolated AgentConfig instance...');
 
-      if (!agentConfig) {
-        throw new Error('AgentConfig not initialized');
+      // Create new AgentConfig instance (NOT using getInstance - we want isolation)
+      settingsConfig = new (AgentConfig as any)();
+      await settingsConfig.initialize();
+
+      // Get current config
+      const config = settingsConfig.getConfig();
+      selectedModelId = config.selectedModelId;
+
+      console.log('[Settings] Loaded config, selectedModelId:', selectedModelId);
+
+      // Build model selection array with all info
+      modelSelectionItems = [];
+      const providers = settingsConfig.getProviders();
+
+      for (const [providerId, provider] of Object.entries(providers)) {
+        if (!provider.models || !Array.isArray(provider.models)) continue;
+
+        // Get API key for this provider
+        const providerApiKey = await settingsConfig.getProviderApiKey(providerId);
+
+        for (const model of provider.models) {
+          modelSelectionItems.push({
+            modelId: model.id,
+            modelName: model.name,
+            modelKey: model.modelKey,
+            providerId: provider.id,
+            providerName: provider.name,
+            apiKey: providerApiKey,
+            contextWindow: model.contextWindow,
+            maxOutputTokens: model.maxOutputTokens
+          });
+        }
       }
 
-      // Load selectedModelId and resolve to get model and provider info
-      const config = agentConfig.getConfig();
-      selectedModel = config.selectedModelId;
+      console.log('[Settings] Built selection items:', modelSelectionItems.length, 'models');
 
-      // Get model and provider from registry
-      const modelData = agentConfig.getModelById(selectedModel);
-      if (modelData) {
-        currentProvider = modelData.provider.id;
+      // Validate selectedModelId
+      if (!selectedModelId || selectedModelId === '') {
+        if (modelSelectionItems.length > 0) {
+          selectedModelId = modelSelectionItems[0].modelId;
+          console.warn('[Settings] selectedModelId was empty, using first available:', selectedModelId);
+        } else {
+          console.error('[Settings] No models available');
+          showMessage('No models available. Please check configuration.', 'error');
+          return;
+        }
+      }
+
+      // Load data for currently selected model
+      const selectedItem = modelSelectionItems.find(item => item.modelId === selectedModelId);
+      if (selectedItem) {
+        currentProvider = selectedItem.providerId;
+        apiKey = selectedItem.apiKey || '';
+        maskedApiKey = apiKey ? maskApiKey(apiKey) : '';
+        isAuthenticated = !!selectedItem.apiKey;
+        currentAuthMode = isAuthenticated ? AuthMode.ApiKey : null;
+
         configuredFeatures = {
           reasoningEffort: null,
           reasoningSummary: undefined,
           verbosity: null,
-          contextWindow: modelData.model.contextWindow,
-          maxOutputTokens: modelData.model.maxOutputTokens
+          contextWindow: selectedItem.contextWindow,
+          maxOutputTokens: selectedItem.maxOutputTokens
         };
       } else {
-        // Fallback
+        console.warn('[Settings] Selected model not found:', selectedModelId);
         currentProvider = 'openai';
+        apiKey = '';
+        maskedApiKey = '';
+        isAuthenticated = false;
+        currentAuthMode = null;
         configuredFeatures = {};
       }
 
-      // Load API key for current provider
-      const providerApiKey = await agentConfig.getProviderApiKey(currentProvider);
-      if (providerApiKey) {
-        apiKey = providerApiKey;
-        maskedApiKey = maskApiKey(providerApiKey);
-        isAuthenticated = true;
-        currentAuthMode = AuthMode.ApiKey;
-      } else {
-        isAuthenticated = false;
-        currentAuthMode = null;
-      }
+      // Load configured providers (those with API keys)
+      configuredProviders = settingsConfig.getConfiguredProviders();
 
-      // Load configured providers
-      configuredProviders = agentConfig.getConfiguredProviders();
+      console.log('[Settings] Loaded settings successfully');
     } catch (error) {
-      console.error('Failed to load settings:', error);
+      console.error('[Settings] Failed to load settings:', error);
       showMessage('Failed to load settings', 'error');
     } finally {
       isInitializing = false;
@@ -145,7 +195,8 @@
   }
 
   /**
-   * T024, T025, T026: Validate and save API key with provider-aware validation
+   * 3.3: Save API key button - save API key from user input to storage
+   * This is separate from model selection and only updates the API key
    */
   async function saveApiKey() {
     if (isSaving) {
@@ -157,15 +208,16 @@
       return;
     }
 
-    if (!agentConfig) {
+    if (!settingsConfig) {
       showMessage('Configuration not initialized', 'error');
       return;
     }
 
     try {
       isSaving = true;
+      console.log('[Settings] Saving API key for provider:', currentProvider);
 
-      // T024: Validate API key format using provider-aware validation
+      // Validate API key format using provider-aware validation
       const { validateApiKeyFormat } = await import('../config/validators');
       const validation = validateApiKeyFormat(apiKey, currentProvider);
 
@@ -175,30 +227,41 @@
         return;
       }
 
-      // T025: Display warning if provider mismatch, but allow save
+      // Display warning if provider mismatch, but allow save
       if (validation.warnings.length > 0) {
         providerValidationWarning = validation.warnings.join(' ');
       } else {
         providerValidationWarning = '';
       }
 
-      await agentConfig.setProviderApiKey(currentProvider, apiKey);
+      // Save API key to storage
+      await settingsConfig.setProviderApiKey(currentProvider, apiKey);
 
       // Update component state
       isAuthenticated = true;
       currentAuthMode = AuthMode.ApiKey;
       maskedApiKey = maskApiKey(apiKey);
 
-      // T044: Refresh configured providers list
-      configuredProviders = agentConfig.getConfiguredProviders();
+      // Update the selection item with the new API key
+      const itemIndex = modelSelectionItems.findIndex(
+        item => item.modelId === selectedModelId
+      );
+      if (itemIndex !== -1) {
+        modelSelectionItems[itemIndex].apiKey = apiKey;
+      }
+
+      // Refresh configured providers list
+      configuredProviders = settingsConfig.getConfiguredProviders();
 
       showMessage('API key saved successfully!', 'success');
+
+      console.log('[Settings] API key saved, notifying agent to re-initialize');
 
       // Send message to service worker to reload config and recreate BrowserxAgent
       chrome.runtime.sendMessage({
         type: 'CONFIG_UPDATE'
       }).catch(err => {
-        console.error('Failed to notify service worker of config update:', err);
+        console.error('[Settings] Failed to notify service worker of config update:', err);
       });
 
       // Notify parent components
@@ -208,7 +271,7 @@
       });
 
     } catch (error) {
-      console.error('Failed to save API key:', error);
+      console.error('[Settings] Failed to save API key:', error);
       showMessage('Failed to save API key', 'error');
     } finally {
       isSaving = false;
@@ -307,23 +370,29 @@
   }
 
   /**
-   * T040: Clear stored authentication for current provider
+   * Clear stored authentication for current provider
    */
   async function clearAuth() {
-    if (!confirm(`Are you sure you want to remove your ${currentProvider === 'openai' ? 'OpenAI' : currentProvider === 'xai' ? 'xAI' : currentProvider === 'anthropic' ? 'Anthropic' : currentProvider} API key? You will need to enter it again to use this provider.`)) {
+    const providerName = currentProvider === 'openai' ? 'OpenAI'
+      : currentProvider === 'xai' ? 'xAI'
+      : currentProvider === 'anthropic' ? 'Anthropic'
+      : currentProvider;
+
+    if (!confirm(`Are you sure you want to remove your ${providerName} API key? You will need to enter it again to use this provider.`)) {
       return;
     }
 
-    if (!agentConfig) {
+    if (!settingsConfig) {
       showMessage('Configuration not initialized', 'error');
       return;
     }
 
     try {
       isClearingAuth = true;
+      console.log('[Settings] Clearing API key for provider:', currentProvider);
 
       // Delete provider-specific API key
-      await agentConfig.deleteProviderApiKey(currentProvider);
+      await settingsConfig.deleteProviderApiKey(currentProvider);
 
       // Reset component state
       apiKey = '';
@@ -332,16 +401,24 @@
       currentAuthMode = null;
       testResult = null;
 
-      // Update configured providers list
-      configuredProviders = agentConfig.getConfiguredProviders();
+      // Update the selection item to reflect removed API key
+      const itemIndex = modelSelectionItems.findIndex(
+        item => item.providerId === currentProvider
+      );
+      if (itemIndex !== -1) {
+        modelSelectionItems[itemIndex].apiKey = null;
+      }
 
-      showMessage(`${currentProvider === 'openai' ? 'OpenAI' : currentProvider === 'xai' ? 'xAI' : currentProvider === 'anthropic' ? 'Anthropic' : currentProvider} API key removed successfully`, 'info');
+      // Update configured providers list
+      configuredProviders = settingsConfig.getConfiguredProviders();
+
+      showMessage(`${providerName} API key removed successfully`, 'info');
 
       // Send message to service worker to reload config and recreate BrowserxAgent
       chrome.runtime.sendMessage({
         type: 'CONFIG_UPDATE'
       }).catch(err => {
-        console.error('Failed to notify service worker of config update:', err);
+        console.error('[Settings] Failed to notify service worker of config update:', err);
       });
 
       // Notify parent components
@@ -351,7 +428,7 @@
       });
 
     } catch (error) {
-      console.error('Failed to clear auth:', error);
+      console.error('[Settings] Failed to clear auth:', error);
       showMessage('Failed to remove API key', 'error');
     } finally {
       isClearingAuth = false;
@@ -411,75 +488,86 @@
   }
 
   /**
-   * T024: Handle model selection change using selectedModelId system
-   * T025: Update currentProvider reactively based on selectedModelId
-   * T026: Async API key loading to prevent UI freezing
+   * Handle model selection change
+   * 3.1: Load related API key to field (empty if not available)
+   * 3.2: Save model selection WITHOUT updating API key
+   * 3.4: Trigger BrowserAgent re-initialization
    */
   async function handleModelChange(event: CustomEvent<{ modelId: string }>) {
-    if (!agentConfig) return;
+    if (!settingsConfig) return;
 
     try {
       isModelSwitching = true;
       const { modelId } = event.detail;
 
+      console.log('[Settings] Model changed to:', modelId);
+
+      // Find the selected item from our pre-built selection array
+      const selectedItem = modelSelectionItems.find(item => item.modelId === modelId);
+      if (!selectedItem) {
+        throw new Error('Model not found in selection items');
+      }
+
+      // Update selectedModelId IMMEDIATELY for instant UI feedback
+      // Create new reference to trigger Svelte reactivity
+      selectedModelId = modelId;
+      modelSelectionItems = [...modelSelectionItems];
+
       // Check if there's an active conversation
       const conversationActive = await isConversationActive();
-      // test>>
-      console.log('$$$ conversationActive', conversationActive);
-      // test<<
       if (conversationActive) {
         showMessage('Cannot change model during an active conversation. Please end the conversation first.', 'error');
+        // Revert the UI change
+        await loadSettings();
         isModelSwitching = false;
         return;
       }
 
-      // Use new setSelectedModel() method
-      await agentConfig.setSelectedModel(modelId);
+      // 3.1: Load the related API key to the API key field
+      // (empty if not available, no error)
+      currentProvider = selectedItem.providerId;
+      apiKey = selectedItem.apiKey || '';
+      maskedApiKey = apiKey ? maskApiKey(apiKey) : '';
+      isAuthenticated = !!selectedItem.apiKey;
+      currentAuthMode = isAuthenticated ? AuthMode.ApiKey : null;
 
-      // Get model and provider info from registry
-      const modelData = agentConfig.getModelById(modelId);
-      if (!modelData) {
-        throw new Error('Model not found in registry');
-      }
+      configuredFeatures = {
+        reasoningEffort: null,
+        reasoningSummary: undefined,
+        verbosity: null,
+        contextWindow: selectedItem.contextWindow,
+        maxOutputTokens: selectedItem.maxOutputTokens
+      };
 
-      selectedModel = modelId;
-      currentProvider = modelData.provider.id;
       modelValidationError = '';
       providerValidationWarning = '';
 
-      // T026: Async load API key for new provider (non-blocking)
-      const providerApiKey = await agentConfig.getProviderApiKey(currentProvider);
+      // 3.2: Save model selection to storage WITHOUT updating API key
+      // We only update selectedModelId, not the provider API keys
+      await settingsConfig.setSelectedModel(modelId);
 
-      if (providerApiKey) {
-        // API key exists, update UI
-        apiKey = providerApiKey;
-        maskedApiKey = maskApiKey(providerApiKey);
-        isAuthenticated = true;
-        showMessage(`Model changed to ${modelData.model.name}. Session will be reinitialized.`, 'success');
-        chrome.runtime.sendMessage({ type: 'CONFIG_UPDATE' });
-      } else {
-        // No API key, prompt user
-        const providerName = modelData.provider.name;
-        apiKey = '';
-        maskedApiKey = '';
-        isAuthenticated = false;
-        showMessage(`Model changed to ${modelData.model.name}. Please configure your ${providerName} API key below.`, 'info');
-      }
+      console.log('[Settings] Model selection saved to storage (API key NOT updated)');
+
+      // 3.4: Trigger BrowserAgent re-initialization
+      chrome.runtime.sendMessage({ type: 'CONFIG_UPDATE' }).catch(err => {
+        console.error('[Settings] Failed to notify agent of config update:', err);
+      });
+
+      const message = apiKey
+        ? `Model changed to ${selectedItem.modelName}. Session will be reinitialized.`
+        : `Model changed to ${selectedItem.modelName}. Please configure your ${selectedItem.providerName} API key below.`;
+
+      showMessage(message, apiKey ? 'success' : 'info');
 
       // Update configured providers list
-      configuredProviders = agentConfig.getConfiguredProviders();
+      configuredProviders = settingsConfig.getConfiguredProviders();
     } catch (error) {
-      console.error('Failed to change model:', error);
+      console.error('[Settings] Failed to change model:', error);
       const errorMessage = error instanceof Error ? error.message : 'Unknown error';
       showMessage(`Failed to change model: ${errorMessage}`, 'error');
 
-      // Revert model selection on error
-      const config = agentConfig.getConfig();
-      selectedModel = config.selectedModelId;
-      const modelData = agentConfig.getModelById(selectedModel);
-      if (modelData) {
-        currentProvider = modelData.provider.id;
-      }
+      // Revert to previous selection
+      await loadSettings();
     } finally {
       isModelSwitching = false;
     }
@@ -515,8 +603,8 @@
           Choose AI Model
         </label>
         <ModelSelector
-          {selectedModel}
-          {configuredFeatures}
+          selectedModel={selectedModelId}
+          {modelSelectionItems}
           disabled={isInitializing || isSaving}
           on:modelChange={handleModelChange}
           on:validationError={handleValidationError}

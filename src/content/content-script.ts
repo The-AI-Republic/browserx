@@ -74,6 +74,9 @@ function setupMessageHandlers(): void {
 
 async function captureInteractionContentInPage(options: CaptureRequest = {}) {
 	try {
+		// IMPORTANT: Capture the entire document starting from <html> (including <head> and <body>)
+		// This ensures we have full page context (title, meta tags, all content)
+		// Serialization for LLM will extract only relevant parts (title, headings, body controls)
 		const html = document.documentElement.outerHTML;
 		const pageModel = await captureInteractionContent(html, {
 			...options,

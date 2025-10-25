@@ -28,9 +28,14 @@ import { extractTextContent } from './textContentExtractor';
 /**
  * Captures interaction content from HTML string
  *
- * @param html - HTML string to process
+ * @param html - Full HTML document string (should include <html>, <head>, and <body>)
  * @param request - Capture configuration options
  * @returns PageModel representing page interaction content
+ *
+ * Architecture:
+ * - Input: Complete HTML document starting from <html> (includes <head> and <body>)
+ * - Processing: Extracts metadata from <head> (title, meta tags) and interactive elements from entire document
+ * - Output: PageModel with title, headings, controls, etc. (LLM-optimized, focuses on <body> content)
  *
  * Performance:
  * - 30-second timeout (hard limit)
@@ -67,12 +72,19 @@ export async function captureInteractionContent(
 
 /**
  * Internal capture implementation (without timeout wrapper)
+ *
+ * Processing flow:
+ * 1. Parse entire HTML document (from <html> root)
+ * 2. Extract metadata from <head> (title, meta tags)
+ * 3. Collect interactive elements from entire document
+ * 4. Extract headings, regions, text content
+ * 5. Build PageModel (LLM-optimized, focuses on actionable content)
  */
 async function captureInteractionContentInternal(
   html: string,
   config: Required<Omit<CaptureRequest, 'baseUrl'>> & Pick<CaptureRequest, 'baseUrl'>
 ): Promise<PageModel> {
-  // Validate HTML
+  // Validate HTML (must start from <html> tag)
   if (!isValidHtml(html)) {
     throw new Error('Invalid HTML: must contain <html> tag and be < 10MB');
   }
@@ -80,19 +92,19 @@ async function captureInteractionContentInternal(
   // Sanitize HTML
   const sanitizedHtml = sanitizeHtml(html);
 
-  // Parse HTML
+  // Parse HTML into Document (creates complete DOM tree from <html>)
   const parser = new DOMParser();
   const doc = parser.parseFromString(sanitizedHtml, 'text/html');
 
-  // Sanitize DOM tree
+  // Sanitize DOM tree (entire document from documentElement = <html>)
   sanitizeDOMTree(doc.documentElement);
 
   // Create window context (for visibility checks)
   // Note: DOMParser doesn't create a real window, so we use globalThis.window or mock
   const windowContext = (globalThis as any).window || createMockWindow();
 
-  // Extract page metadata
-  const title = extractTitle(doc);
+  // Extract page metadata from <head>
+  const title = extractTitle(doc); // Searches <head> for <title>
   const url = config.baseUrl;
 
   // Extract headings
@@ -158,11 +170,14 @@ function extractTitle(doc: Document): string {
 
 /**
  * Collects all interactive elements from document
+ *
+ * Note: Searches the entire document (including <head> and <body>)
+ * though interactive elements are typically only in <body>
  */
 function collectInteractiveElements(doc: Document): Element[] {
   const elements: Element[] = [];
 
-  // Query interactive element selectors
+  // Query interactive element selectors from entire document
   const interactiveSelectors = [
     'a[href]',
     'button',
@@ -185,6 +200,7 @@ function collectInteractiveElements(doc: Document): Element[] {
     '[tabindex]:not([tabindex="-1"])',
   ].join(', ');
 
+  // querySelectorAll searches entire document from root (<html>)
   const allElements = doc.querySelectorAll(interactiveSelectors);
 
   for (const element of Array.from(allElements)) {

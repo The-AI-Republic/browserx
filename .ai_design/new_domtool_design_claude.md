@@ -1511,7 +1511,7 @@ private async captureShadowDom(
 
 ### iframe Traversal
 
-Same-origin iframes can be traversed. Cross-origin iframes throw security exceptions.
+Same-origin iframes can be traversed. Cross-origin iframes will be ignored and emit a console log.
 
 ```typescript
 /**

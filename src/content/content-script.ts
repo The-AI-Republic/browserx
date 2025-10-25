@@ -57,6 +57,10 @@ function setupMessageHandlers(): void {
 			return captureInteractionContentInPage(args as CaptureRequest);
 		}
 
+		if (command === 'build-snapshot') {
+			return buildSnapshotInPage(args as CaptureRequest);
+		}
+
 		throw new Error(`Unknown command: ${command}`);
 	});
 
@@ -86,6 +90,42 @@ async function captureInteractionContentInPage(options: CaptureRequest = {}) {
 		return pageModel;
 	} catch (error) {
 		console.error('[Content Script] Failed to capture interaction content:', error);
+		throw error;
+	}
+}
+
+/**
+ * Builds a new snapshot of the page
+ *
+ * This is typically called:
+ * - After page actions (click, type, keypress) to capture DOM changes
+ * - After navigation events (popstate, pushstate)
+ * - On manual trigger from external tools
+ * - After significant DOM mutations
+ *
+ * @param options - Capture configuration options
+ * @returns PageModel snapshot
+ */
+async function buildSnapshotInPage(options: CaptureRequest = {}) {
+	try {
+		console.log('[Content Script] Building new DOM snapshot');
+
+		// Build snapshot by capturing current DOM state
+		const html = document.documentElement.outerHTML;
+		const pageModel = await captureInteractionContent(html, {
+			...options,
+			baseUrl: options.baseUrl || window.location.href
+		});
+
+		console.log('[Content Script] Snapshot built successfully', {
+			controls: pageModel.controls.length,
+			headings: pageModel.headings.length,
+			regions: pageModel.regions.length
+		});
+
+		return pageModel;
+	} catch (error) {
+		console.error('[Content Script] Failed to build snapshot:', error);
 		throw error;
 	}
 }
@@ -134,7 +174,7 @@ function announcePresence(): void {
 
 	router.send(MessageType.TOOL_RESULT, {
 		type: 'tools-available',
-		tools: ['capture-interaction-content', 'page_action'],
+		tools: ['capture-interaction-content', 'build-snapshot', 'page_action'],
 		tabId: getTabId()
 	}).catch(() => {
 		/* ignore connection errors */
@@ -231,5 +271,5 @@ async function executeVerifyAction(action: ActionCommand): Promise<ActionExecuti
 	throw new Error('Verify action not yet implemented');
 }
 
-export { getPageContext, captureInteractionContentInPage, handlePageAction };
+export { getPageContext, captureInteractionContentInPage, buildSnapshotInPage, handlePageAction };
 

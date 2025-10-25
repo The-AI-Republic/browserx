@@ -10,6 +10,7 @@
  * 1. Computed styles (display, visibility, opacity)
  * 2. Bounding box (width/height > 0)
  * 3. Viewport intersection
+ * 4. Paint order occlusion (element not covered by other elements)
  */
 
 import type { BoundingBox } from './pageModel';
@@ -18,11 +19,14 @@ import type { BoundingBox } from './pageModel';
  * Visibility result for an element
  */
 export interface VisibilityInfo {
-  /** Element is visible (styles + bbox) */
+  /** Element is visible (styles + bbox + not occluded) */
   visible: boolean;
 
   /** Element is within viewport */
   inViewport: boolean;
+
+  /** Element is covered by other elements (paint order occlusion) */
+  occluded?: boolean;
 
   /** Element bounding box (if visible) */
   boundingBox?: BoundingBox;
@@ -41,6 +45,7 @@ export interface VisibilityInfo {
  * - opacity > 0
  * - width > 0 && height > 0
  * - Element intersects viewport
+ * - Element not covered by other elements (paint order)
  */
 export function checkVisibility(element: Element, window: Window): VisibilityInfo {
   // Get computed styles
@@ -70,7 +75,7 @@ export function checkVisibility(element: Element, window: Window): VisibilityInf
     return { visible: false, inViewport: false };
   }
 
-  // Element is visible
+  // Element passes style and dimension checks
   const boundingBox: BoundingBox = {
     x: rect.left,
     y: rect.top,
@@ -81,11 +86,75 @@ export function checkVisibility(element: Element, window: Window): VisibilityInf
   // Check viewport intersection
   const inViewport = isInViewport(rect, window);
 
+  // Check if element is occluded by other elements
+  const occluded = isOccluded(element, rect, window);
+
   return {
-    visible: true,
+    visible: !occluded, // Element is visible only if not occluded
     inViewport,
+    occluded,
     boundingBox,
   };
+}
+
+/**
+ * Checks if element is occluded (covered) by other elements
+ *
+ * @param element - Element to check
+ * @param rect - Element's bounding box
+ * @param window - Window context
+ * @returns True if element is covered by other elements
+ *
+ * Strategy:
+ * - Tests multiple points on the element (center + corners)
+ * - Uses document.elementFromPoint() to get topmost element at each point
+ * - Element is occluded if none of the test points hit the element or its children
+ * - Handles edge cases: pointer-events: none, nested elements
+ */
+function isOccluded(element: Element, rect: DOMRect, window: Window): boolean {
+  // Skip occlusion check if element is outside viewport (no point to check)
+  if (!isInViewport(rect, window)) {
+    return false; // Not occluded, just offscreen
+  }
+
+  // Calculate test points: center and 4 corners (inset by 2px to avoid edge cases)
+  const points = [
+    // Center point (most important)
+    { x: rect.left + rect.width / 2, y: rect.top + rect.height / 2 },
+    // Top-left corner
+    { x: rect.left + 2, y: rect.top + 2 },
+    // Top-right corner
+    { x: rect.right - 2, y: rect.top + 2 },
+    // Bottom-left corner
+    { x: rect.left + 2, y: rect.bottom - 2 },
+    // Bottom-right corner
+    { x: rect.right - 2, y: rect.bottom - 2 },
+  ];
+
+  // Test each point to see if it hits our element
+  let visiblePoints = 0;
+
+  for (const point of points) {
+    try {
+      const topElement = window.document.elementFromPoint(point.x, point.y);
+
+      if (!topElement) {
+        continue; // Point is outside document
+      }
+
+      // Check if the top element is our target element or a descendant
+      if (topElement === element || element.contains(topElement)) {
+        visiblePoints++;
+      }
+    } catch (error) {
+      // elementFromPoint can throw in edge cases, treat as occluded
+      continue;
+    }
+  }
+
+  // Element is occluded if none of the test points are visible
+  // We require at least 1 visible point (typically the center)
+  return visiblePoints === 0;
 }
 
 /**
@@ -122,6 +191,21 @@ function isInViewport(rect: DOMRect, window: Window): boolean {
  */
 export function isOffscreen(rect: DOMRect, window: Window): boolean {
   return !isInViewport(rect, window);
+}
+
+/**
+ * Checks if an element is occluded by other elements (public API)
+ *
+ * @param element - Element to check
+ * @param window - Window context
+ * @returns True if element is covered by other elements
+ *
+ * Note: This is computationally expensive (uses elementFromPoint)
+ * Consider using checkVisibility() which includes this check
+ */
+export function isElementOccluded(element: Element, window: Window): boolean {
+  const rect = element.getBoundingClientRect();
+  return isOccluded(element, rect, window);
 }
 
 /**

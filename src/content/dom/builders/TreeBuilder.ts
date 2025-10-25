@@ -15,13 +15,23 @@ import { isInteractive } from "./InteractivityDetector";
 import { createVirtualNode } from "../VirtualNode";
 
 /**
+ * Element match score for ID reuse
+ */
+interface MatchScore {
+  nodeId: string;
+  score: number;
+  element: Element;
+}
+
+/**
  * Tree Builder class
  *
  * Responsible for:
  * - Building VirtualNode tree from real DOM
  * - Generating unique node IDs
- * - Preserving IDs across snapshot rebuilds
+ * - Preserving IDs across snapshot rebuilds (with enhanced matching)
  * - Handling iframe and shadow DOM traversal
+ * - Incremental tree updates for changed elements only
  */
 export class TreeBuilder {
   private config: Required<DomToolConfig>;
@@ -34,6 +44,11 @@ export class TreeBuilder {
     iframeCount: 0,
     shadowDomCount: 0,
   };
+
+  // Enhanced ID reuse tracking
+  private oldElementMap?: Map<string, Element>;
+  private elementFingerprintCache = new Map<Element, string>();
+  private positionCache = new Map<Element, string>();
 
   constructor(config: DomToolConfig = {}) {
     this.config = { ...DEFAULT_CONFIG, ...config };
@@ -84,15 +99,19 @@ export class TreeBuilder {
    *
    * @param rootElement - Root element to start from (typically document.body)
    * @param oldSnapshot - Previous snapshot for ID preservation
+   * @param dirtyElements - Set of elements that changed (for incremental updates)
    * @returns Root VirtualNode
    */
   async buildTree(
     rootElement: Element,
-    oldSnapshot?: DomSnapshot
+    oldSnapshot?: DomSnapshot,
+    dirtyElements?: Set<Element>
   ): Promise<VirtualNode> {
     // Reset state for new tree
     this.usedIds.clear();
     this.elementMap.clear();
+    this.elementFingerprintCache.clear();
+    this.positionCache.clear();
     this.stats = {
       totalNodes: 0,
       visibleNodes: 0,
@@ -101,8 +120,20 @@ export class TreeBuilder {
       shadowDomCount: 0,
     };
 
-    // Build tree recursively
-    const root = await this.buildNode(rootElement, 0, oldSnapshot);
+    // Store old element map for enhanced matching
+    if (oldSnapshot) {
+      this.oldElementMap = this.extractElementMap(oldSnapshot);
+    } else {
+      this.oldElementMap = undefined;
+    }
+
+    // Build tree recursively (with incremental support)
+    const root = await this.buildNode(rootElement, 0, oldSnapshot, dirtyElements);
+
+    // Clear caches after build
+    this.elementFingerprintCache.clear();
+    this.positionCache.clear();
+    this.oldElementMap = undefined;
 
     return root;
   }
@@ -113,20 +144,22 @@ export class TreeBuilder {
    * @param element - DOM element to convert
    * @param depth - Current tree depth
    * @param oldSnapshot - Previous snapshot for ID preservation
+   * @param dirtyElements - Set of elements that changed (for incremental updates)
    * @returns VirtualNode
    */
   private async buildNode(
     element: Element,
     depth: number,
-    oldSnapshot?: DomSnapshot
+    oldSnapshot?: DomSnapshot,
+    dirtyElements?: Set<Element>
   ): Promise<VirtualNode> {
     // Check depth limit
     if (depth > this.config.maxTreeDepth) {
       throw new Error(`Max tree depth ${this.config.maxTreeDepth} exceeded`);
     }
 
-    // Try to preserve node_id from old snapshot
-    const nodeId = this.matchElement(element, oldSnapshot) || this.generateNodeId();
+    // Try to preserve node_id from old snapshot (enhanced matching)
+    const nodeId = this.matchElementEnhanced(element, oldSnapshot) || this.generateNodeId();
 
     // Check visibility
     const visible = isVisible(element);
@@ -147,7 +180,7 @@ export class TreeBuilder {
 
     // Build children (if visible or should traverse hidden)
     if (visible || this.shouldTraverseHidden(element)) {
-      node.children = await this.buildChildren(element, depth, oldSnapshot);
+      node.children = await this.buildChildren(element, depth, oldSnapshot, dirtyElements);
     }
 
     // Handle iframe (if configured)
@@ -179,13 +212,14 @@ export class TreeBuilder {
   private async buildChildren(
     element: Element,
     depth: number,
-    oldSnapshot?: DomSnapshot
+    oldSnapshot?: DomSnapshot,
+    dirtyElements?: Set<Element>
   ): Promise<VirtualNode[] | undefined> {
     const children: VirtualNode[] = [];
 
     for (const child of Array.from(element.children)) {
       try {
-        const childNode = await this.buildNode(child, depth + 1, oldSnapshot);
+        const childNode = await this.buildNode(child, depth + 1, oldSnapshot, dirtyElements);
         children.push(childNode);
       } catch (error) {
         // Skip problematic children
@@ -509,5 +543,203 @@ export class TreeBuilder {
     if (tag === "details") return true;
 
     return false;
+  }
+
+  /**
+   * Enhanced element matching with scoring system
+   *
+   * Tries multiple strategies and returns the best match based on confidence score.
+   * Prioritizes stable identifiers over positional/content matching.
+   *
+   * @param element - Element to match
+   * @param oldSnapshot - Previous snapshot
+   * @returns Preserved node_id or null if no match
+   */
+  private matchElementEnhanced(element: Element, oldSnapshot?: DomSnapshot): string | null {
+    if (!oldSnapshot || !this.oldElementMap) return null;
+
+    const candidates: MatchScore[] = [];
+
+    // Strategy 1: Exact element match (element still exists in old map)
+    // This is the fastest path - element hasn't changed at all
+    const exactMatchId = this.findExactElementMatch(element);
+    if (exactMatchId) {
+      return exactMatchId;
+    }
+
+    // Strategy 2: Match by HTML id (score: 90)
+    const htmlId = element.getAttribute("id");
+    if (htmlId) {
+      const oldNode = this.findNodeByHtmlId(oldSnapshot.virtualDom, htmlId);
+      if (oldNode && this.isSimilarElement(oldNode, element)) {
+        candidates.push({ nodeId: oldNode.node_id, score: 90, element });
+      }
+    }
+
+    // Strategy 3: Match by test ID (score: 85)
+    const testId =
+      element.getAttribute("data-testid") ||
+      element.getAttribute("data-test") ||
+      element.getAttribute("data-cy");
+    if (testId) {
+      const oldNode = this.findNodeByTestId(oldSnapshot.virtualDom, testId);
+      if (oldNode && this.isSimilarElement(oldNode, element)) {
+        candidates.push({ nodeId: oldNode.node_id, score: 85, element });
+      }
+    }
+
+    // Strategy 4: Match by tree path (score: 70)
+    const treePath = this.getTreePath(element);
+    if (treePath) {
+      const oldNode = this.findNodeByPath(oldSnapshot.virtualDom, treePath);
+      if (oldNode && this.isSimilarElement(oldNode, element)) {
+        candidates.push({ nodeId: oldNode.node_id, score: 70, element });
+      }
+    }
+
+    // Strategy 5: Match by position (score: 60)
+    const positionId = this.findByPosition(element, oldSnapshot);
+    if (positionId) {
+      candidates.push({ nodeId: positionId, score: 60, element });
+    }
+
+    // Strategy 6: Match by content fingerprint (score: 50)
+    const fingerprint = this.getElementFingerprint(element);
+    const oldNode = this.findNodeBySimilarity(oldSnapshot.virtualDom, fingerprint);
+    if (oldNode && this.isSimilarElement(oldNode, element)) {
+      candidates.push({ nodeId: oldNode.node_id, score: 50, element });
+    }
+
+    // Return best match (highest score)
+    if (candidates.length > 0) {
+      candidates.sort((a, b) => b.score - a.score);
+      return candidates[0].nodeId;
+    }
+
+    return null;
+  }
+
+  /**
+   * Find exact element match in old element map
+   *
+   * This checks if the exact same element object exists in the old snapshot.
+   *
+   * @param element - Element to find
+   * @returns node_id if found, null otherwise
+   */
+  private findExactElementMatch(element: Element): string | null {
+    if (!this.oldElementMap) return null;
+
+    // Check if this exact element is in the old map
+    for (const [nodeId, oldElement] of this.oldElementMap.entries()) {
+      if (oldElement === element) {
+        return nodeId;
+      }
+    }
+
+    return null;
+  }
+
+  /**
+   * Find element by positional matching
+   *
+   * Matches elements in the same position in the tree structure,
+   * even if their content changed.
+   *
+   * @param element - Element to match
+   * @param oldSnapshot - Previous snapshot
+   * @returns node_id if found, null otherwise
+   */
+  private findByPosition(element: Element, oldSnapshot: DomSnapshot): string | null {
+    // Build position path (parent -> child index chain)
+    const position = this.getPositionPath(element);
+    if (!position) return null;
+
+    // Try to find element at same position in old snapshot
+    const oldNode = this.findNodeByPosition(oldSnapshot.virtualDom, position, 0);
+    if (oldNode && this.isSimilarElement(oldNode, element)) {
+      return oldNode.node_id;
+    }
+
+    return null;
+  }
+
+  /**
+   * Get position path for an element
+   *
+   * Returns array of child indices from root to element
+   *
+   * @param element - Element to get position for
+   * @returns Position path or null
+   */
+  private getPositionPath(element: Element): number[] | null {
+    const path: number[] = [];
+    let current: Element | null = element;
+
+    while (current && current !== document.body) {
+      const parent = current.parentElement;
+      if (!parent) break;
+
+      const index = Array.from(parent.children).indexOf(current);
+      if (index === -1) break;
+
+      path.unshift(index);
+      current = parent;
+    }
+
+    return path.length > 0 ? path : null;
+  }
+
+  /**
+   * Find node by position path
+   *
+   * @param node - Current node to search
+   * @param path - Position path
+   * @param depth - Current depth in path
+   * @returns VirtualNode if found, null otherwise
+   */
+  private findNodeByPosition(
+    node: VirtualNode,
+    path: number[],
+    depth: number
+  ): VirtualNode | null {
+    // Reached target depth
+    if (depth === path.length) {
+      return node;
+    }
+
+    // Get child at position
+    if (!node.children || path[depth] >= node.children.length) {
+      return null;
+    }
+
+    const child = node.children[path[depth]];
+    return this.findNodeByPosition(child, path, depth + 1);
+  }
+
+  /**
+   * Extract element map from old snapshot
+   *
+   * @param snapshot - Snapshot to extract from
+   * @returns Map of node_id to Element
+   */
+  private extractElementMap(snapshot: DomSnapshot): Map<string, Element> {
+    const map = new Map<string, Element>();
+
+    const traverse = (node: VirtualNode) => {
+      const element = snapshot.getRealElement(node.node_id);
+      if (element) {
+        map.set(node.node_id, element);
+      }
+
+      if (node.children) {
+        for (const child of node.children) {
+          traverse(child);
+        }
+      }
+    };
+
+    traverse(snapshot.virtualDom);
+    return map;
   }
 }

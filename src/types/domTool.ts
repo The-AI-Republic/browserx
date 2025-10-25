@@ -2,10 +2,9 @@
  * DOM Tool API Types
  *
  * This file defines the types for the refactored DOMTool v2.0.
- * These types define the public API for high-level DOM reading operations.
+ * These types define the public API for interaction-focused DOM capture.
  *
  * Version: 2.0.0
- * Breaking changes from 1.x: Removed atomic operations (query, click, type, etc.)
  */
 
 // =============================================================================
@@ -13,38 +12,23 @@
 // =============================================================================
 
 /**
- * Request to capture complete DOM state from a tab
+ * Request to capture page interaction model from a tab
  */
 export interface DOMCaptureRequest {
   /** Tab ID to capture from (undefined = active tab) */
   tab_id?: number;
 
-  /** Include shadow DOM trees (default: true) */
-  include_shadow_dom?: boolean;
-
-  /** Include iframe content (default: true) */
-  include_iframes?: boolean;
-
-  /** Maximum iframe nesting depth (default: 3, max: 10) */
+  /** Maximum iframe nesting depth to process (default: 1) */
   max_iframe_depth?: number;
 
-  /** Maximum total iframe count (default: 15, max: 50) */
-  max_iframe_count?: number;
+  /** Maximum interactive controls to capture (default: 400) */
+  max_controls?: number;
 
-  /** Remove elements occluded by paint order (default: true) */
-  paint_order_filtering?: boolean;
+  /** Maximum headings to extract (default: 30) */
+  max_headings?: number;
 
-  /** Remove off-screen elements (default: true) */
-  bbox_filtering?: boolean;
-
-  /** Capture timeout in milliseconds (default: 5000, max: 30000) */
-  timeout_ms?: number;
-
-  /** Use cached DOM state if valid (default: true) */
-  use_cache?: boolean;
-
-  /** Include performance timing information (default: false) */
-  include_timing?: boolean;
+  /** Include form values in capture (default: false, privacy risk) */
+  include_values?: boolean;
 }
 
 // =============================================================================
@@ -334,26 +318,24 @@ export type ShadowRootType = 'open' | 'closed' | 'user-agent';
 export const DOM_TOOL_CONSTANTS = {
   /** Default configuration values */
   DEFAULTS: {
-    MAX_IFRAME_DEPTH: 3,
-    MAX_IFRAME_COUNT: 15,
-    TIMEOUT_MS: 5000,
-    CACHE_TTL_MS: 30000,
-    CACHE_MAX_ENTRIES: 5
+    MAX_IFRAME_DEPTH: 1,
+    MAX_CONTROLS: 400,
+    MAX_HEADINGS: 30,
+    INCLUDE_VALUES: false,
+    CAPTURE_TIMEOUT_MS: 30000
   },
 
   /** Limits */
   LIMITS: {
-    MAX_SERIALIZED_SIZE_MB: 5,
-    MAX_SELECTOR_MAP_ENTRIES: 10000,
-    MAX_MESSAGE_SIZE_MB: 4,
-    MAX_STRING_POOL_SIZE: 100000
+    MAX_CONTROLS: 1000,
+    MAX_HEADINGS: 100,
+    MAX_IFRAME_DEPTH: 3,
+    MAX_MESSAGE_SIZE_MB: 4
   },
 
   /** Performance targets */
   PERFORMANCE_TARGETS: {
-    SIMPLE_PAGE_MS: 500,    // <1000 nodes
-    MEDIUM_PAGE_MS: 1000,   // 1000-5000 nodes
-    COMPLEX_PAGE_MS: 2000,  // 5000-20000 nodes
-    CACHE_HIT_MS: 100
+    CAPTURE_TARGET_MS: 5000,   // 90th percentile
+    CAPTURE_TIMEOUT_MS: 30000  // Hard limit
   }
 };

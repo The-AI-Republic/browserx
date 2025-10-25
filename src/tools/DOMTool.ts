@@ -21,47 +21,27 @@ import { MessageType } from '../core/MessageRouter';
 export class DOMTool extends BaseTool {
   protected toolDefinition: ToolDefinition = createToolDefinition(
     'browser_dom',
-    'Capture complete DOM state from web pages - high-level DOM reading for AI agents',
+    'Capture page interaction model (headings, regions, interactive controls) for AI agents',
     {
       tab_id: {
         type: 'number',
         description: 'Tab ID to capture from (undefined = active tab)',
       },
-      include_shadow_dom: {
-        type: 'boolean',
-        description: 'Include shadow DOM trees (default: true)',
-      },
-      include_iframes: {
-        type: 'boolean',
-        description: 'Include iframe content (default: true)',
-      },
       max_iframe_depth: {
         type: 'number',
-        description: 'Maximum iframe nesting depth (default: 3, max: 10)',
+        description: 'Maximum iframe nesting depth to process (default: 1)',
       },
-      max_iframe_count: {
+      max_controls: {
         type: 'number',
-        description: 'Maximum total iframe count (default: 15, max: 50)',
+        description: 'Maximum interactive controls to capture (default: 400)',
       },
-      paint_order_filtering: {
-        type: 'boolean',
-        description: 'Remove elements occluded by paint order (default: true)',
-      },
-      bbox_filtering: {
-        type: 'boolean',
-        description: 'Remove off-screen elements (default: true)',
-      },
-      timeout_ms: {
+      max_headings: {
         type: 'number',
-        description: 'Capture timeout in milliseconds (default: 5000, max: 30000)',
+        description: 'Maximum headings to extract (default: 30)',
       },
-      use_cache: {
+      include_values: {
         type: 'boolean',
-        description: 'Use cached DOM state if valid (default: true)',
-      },
-      include_timing: {
-        type: 'boolean',
-        description: 'Include performance timing information (default: false)',
+        description: 'Include form values in capture (default: false, privacy risk)',
       },
     },
     {
@@ -71,14 +51,13 @@ export class DOMTool extends BaseTool {
       metadata: {
         capabilities: [
           'dom_capture',
-          'serialized_tree',
-          'selector_map',
+          'interaction_model',
           'accessibility_tree',
           'iframe_support',
-          'shadow_dom_support',
-          'caching'
+          'occlusion_detection',
+          'visible_elements_only'
         ],
-        permissions: ['activeTab', 'scripting', 'webNavigation'],
+        permissions: ['activeTab', 'scripting'],
       },
     }
   );
@@ -109,10 +88,9 @@ export class DOMTool extends BaseTool {
   }
 
   /**
-   * Capture page interaction content using new captureInteractionContent() method
+   * Capture page interaction content using captureInteractionContent() method
    *
-   * This method uses the privacy-first, LLM-optimized interaction capture system
-   * instead of the legacy full DOM tree capture.
+   * Uses the privacy-first, LLM-optimized interaction capture system.
    */
   private async captureInteractionContent(request: DOMCaptureRequest): Promise<DOMCaptureResponse> {
     // Get target tab
@@ -132,18 +110,14 @@ export class DOMTool extends BaseTool {
         log: (msg: string) => this.log('info', msg),
         error: (msg: string) => this.log('error', msg),
         warn: (msg: string) => this.log('warn', msg)
-      },
-      false, // cross_origin_iframes
-      request.paint_order_filtering !== false,
-      request.max_iframe_count || 15,
-      request.max_iframe_depth || 3
+      }
     );
 
     // Capture interaction content
     const pageModel = await this.domService.captureInteractionContent({
-      maxControls: 400,
-      maxHeadings: 30,
-      includeValues: false,
+      maxControls: request.max_controls || 400,
+      maxHeadings: request.max_headings || 30,
+      includeValues: request.include_values || false,
       maxIframeDepth: request.max_iframe_depth || 1
     });
 

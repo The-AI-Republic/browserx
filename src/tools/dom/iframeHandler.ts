@@ -8,6 +8,7 @@
  *
  * Strategy:
  * - Only process same-origin iframes (security)
+ * - Cross-origin iframes are silently ignored (no exceptions thrown)
  * - Default depth: 1 level
  * - Extensible for future multi-level support
  */
@@ -36,9 +37,10 @@ export interface IframeContent {
  *
  * Strategy:
  * - Queries all iframe elements
- * - Checks same-origin policy
+ * - Same-origin iframes are processed and included
+ * - Cross-origin iframes are silently ignored (no exceptions thrown)
  * - Recursively processes nested iframes (up to maxDepth)
- * - Collects all interactive elements from iframes
+ * - Collects all interactive elements from accessible iframes
  */
 export function processIframes(
   document: Document,
@@ -60,32 +62,28 @@ export function processIframes(
   const iframes = document.querySelectorAll('iframe');
 
   for (const iframe of Array.from(iframes)) {
-    try {
-      // Attempt to access iframe content (will throw if cross-origin)
-      const iframeDoc = getIframeDocument(iframe as HTMLIFrameElement);
+    // Attempt to access iframe content (returns null if cross-origin)
+    const iframeDoc = getIframeDocument(iframe as HTMLIFrameElement);
 
-      if (!iframeDoc) {
-        result.skippedCount++;
-        continue;
-      }
-
-      // Successfully accessed iframe (same-origin)
-      result.processedCount++;
-
-      // Extract interactive elements from iframe
-      const iframeElements = extractIframeElements(iframeDoc);
-      result.elements.push(...iframeElements);
-
-      // Recursively process nested iframes
-      if (currentDepth + 1 < maxDepth) {
-        const nested = processIframes(iframeDoc, maxDepth, currentDepth + 1);
-        result.elements.push(...nested.elements);
-        result.processedCount += nested.processedCount;
-        result.skippedCount += nested.skippedCount;
-      }
-    } catch (error) {
-      // Cross-origin iframe: skip
+    if (!iframeDoc) {
+      // Cross-origin iframe or not loaded: silently skip
       result.skippedCount++;
+      continue;
+    }
+
+    // Successfully accessed iframe (same-origin)
+    result.processedCount++;
+
+    // Extract interactive elements from iframe
+    const iframeElements = extractIframeElements(iframeDoc);
+    result.elements.push(...iframeElements);
+
+    // Recursively process nested iframes
+    if (currentDepth + 1 < maxDepth) {
+      const nested = processIframes(iframeDoc, maxDepth, currentDepth + 1);
+      result.elements.push(...nested.elements);
+      result.processedCount += nested.processedCount;
+      result.skippedCount += nested.skippedCount;
     }
   }
 
@@ -96,10 +94,9 @@ export function processIframes(
  * Gets document from iframe element
  *
  * @param iframe - Iframe element
- * @returns iframe's document or null
+ * @returns iframe's document or null if cross-origin/not accessible
  *
- * Throws:
- * - SecurityError if iframe is cross-origin
+ * Note: Cross-origin iframes are silently ignored (returns null)
  */
 function getIframeDocument(iframe: HTMLIFrameElement): Document | null {
   try {
@@ -115,8 +112,8 @@ function getIframeDocument(iframe: HTMLIFrameElement): Document | null {
 
     return null;
   } catch (error) {
-    // Cross-origin access denied
-    throw new Error('Cross-origin iframe access denied');
+    // Cross-origin access denied - silently return null
+    return null;
   }
 }
 

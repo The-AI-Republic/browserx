@@ -2,25 +2,7 @@
  * Default centralized agent configuration values
  */
 
-import type { IAgentConfig, IModelConfig, IUserPreferences, ICacheSettings, IExtensionSettings, IPermissionSettings, IToolsConfig, IStorageConfig } from './types';
-
-// Default model configuration (DEPRECATED - for backward compatibility only)
-// Use providers[].models[] for current model configurations
-export const DEFAULT_MODEL_CONFIG: IModelConfig = {
-  id: '000000', // Placeholder ID for legacy compatibility
-  name: 'GPT-5',
-  modelKey: 'gpt-5',
-  creator: 'OpenAI',
-  contextWindow: 128000,
-  maxOutputTokens: 16384,
-  supportsReasoning: true,
-  reasoningEfforts: ['minimal', 'low', 'medium', 'high'],
-  supportsReasoningSummaries: true,
-  supportsVerbosity: true,
-  verbosityLevels: ['low', 'medium', 'high'],
-  releaseDate: '2024-12-05',
-  deprecated: false
-};
+import type { IAgentConfig, IUserPreferences, ICacheSettings, IExtensionSettings, IPermissionSettings, IToolsConfig, IStorageConfig } from './types';
 
 export const DEFAULT_USER_PREFERENCES: IUserPreferences = {
   autoSync: true,
@@ -59,7 +41,7 @@ export const DEFAULT_EXTENSION_SETTINGS: IExtensionSettings = {
   permissions: DEFAULT_PERMISSION_SETTINGS
 };
 
-// Default retry configuration (must be before DEFAULT_AGENT_CONFIG)
+// Default retry configuration
 export const DEFAULT_RETRY_CONFIG = {
   maxRetries: 3,
   initialDelay: 1000,
@@ -67,7 +49,7 @@ export const DEFAULT_RETRY_CONFIG = {
   backoffMultiplier: 2
 };
 
-// Default timeout settings (ms) (must be before DEFAULT_AGENT_CONFIG)
+// Default timeout settings (ms)
 export const DEFAULT_TIMEOUTS = {
   API_REQUEST: 30000,
   STORAGE_OPERATION: 5000
@@ -168,15 +150,10 @@ export function getDefaultAgentConfig(): IAgentConfig {
     cache: { ...DEFAULT_CACHE_SETTINGS },
     extension: { ...DEFAULT_EXTENSION_SETTINGS },
     tools: { ...DEFAULT_TOOLS_CONFIG },
-    storage: { ...DEFAULT_STORAGE_CONFIG },
-    model: { ...DEFAULT_MODEL_CONFIG } // Keep for backward compatibility (deprecated)
+    storage: { ...DEFAULT_STORAGE_CONFIG }
   };
 }
 
-// DO NOT USE - Use getDefaultAgentConfig() instead
-// This export exists only for backward compatibility
-// @deprecated
-export const DEFAULT_AGENT_CONFIG = null as any as IAgentConfig;
 
 // Storage keys
 export const STORAGE_KEYS = {
@@ -231,10 +208,6 @@ export function mergeWithDefaults(partial: Partial<IAgentConfig>): IAgentConfig 
     ...defaults,
     ...partial,
     providers: mergedProviders,
-    model: {
-      ...DEFAULT_MODEL_CONFIG,
-      ...(partial.model || {})
-    },
     preferences: {
       ...DEFAULT_USER_PREFERENCES,
       ...(partial.preferences || {})

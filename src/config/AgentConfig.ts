@@ -224,8 +224,10 @@ export class AgentConfig implements IConfigService {
       console.error('Failed to persist config:', err);
     });
 
-    // Emit change events
-    this.emitChangeEvent('model', oldConfig.model, newConfig.model);
+    // Emit change events if selectedModelId changed
+    if (oldConfig.selectedModelId !== newConfig.selectedModelId) {
+      this.emitChangeEvent('model', oldConfig.selectedModelId, newConfig.selectedModelId);
+    }
 
     return { ...this.currentConfig };
   }
@@ -324,18 +326,13 @@ export class AgentConfig implements IConfigService {
   getModelConfig(): IModelConfig {
     this.ensureInitialized();
 
-    // Use new selectedModelId system
+    // Use selectedModelId system
     const modelData = this.getModelById(this.currentConfig.selectedModelId);
     if (modelData) {
       return modelData.model;
     }
 
-    // Fallback to legacy model config if available
-    if (this.currentConfig.model) {
-      return { ...this.currentConfig.model };
-    }
-
-    // Last resort: return first available model
+    // Fallback: return first available model
     const allModels = this.getAllModels();
     if (allModels.length > 0) {
       return allModels[0].model;
@@ -360,15 +357,31 @@ export class AgentConfig implements IConfigService {
       );
     }
 
-
-
     // Validate maxOutputTokens <= contextWindow
     if (newModel.maxOutputTokens && newModel.contextWindow &&
         newModel.maxOutputTokens > newModel.contextWindow) {
       throw new Error('maxOutputTokens cannot exceed contextWindow');
     }
 
-    this.currentConfig.model = newModel;
+    // Update the model in the provider's models array
+    const modelData = this.getModelById(this.currentConfig.selectedModelId);
+    if (!modelData) {
+      throw new Error('Cannot update model: selected model not found');
+    }
+
+    const provider = this.currentConfig.providers[modelData.provider.id];
+    if (!provider || !provider.models) {
+      throw new Error('Cannot update model: provider not found');
+    }
+
+    // Find and update the model in the provider's models array
+    const modelIndex = provider.models.findIndex(m => m.id === this.currentConfig.selectedModelId);
+    if (modelIndex === -1) {
+      throw new Error('Cannot update model: model not found in provider');
+    }
+
+    provider.models[modelIndex] = newModel;
+
     this.storage.set(this.currentConfig).catch(err => {
       console.error('Failed to persist config:', err);
     });

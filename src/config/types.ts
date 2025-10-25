@@ -51,12 +51,6 @@ export interface IAgentConfig {
   extension: IExtensionSettings;
   tools?: IToolsConfig;
   storage?: IStorageConfig;
-
-  /**
-   * Legacy model config (DEPRECATED)
-   * @deprecated Use selectedModelId and modelRegistry instead
-   */
-  model?: IModelConfig;
 }
 
 // Model configuration

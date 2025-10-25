@@ -78,14 +78,6 @@ export function validateConfig(config: any): ValidationResult {
     }
   }
 
-  // Validate model (legacy, optional for backward compatibility)
-  if (config.model && typeof config.model === 'object') {
-    const modelValidation = validateModelConfig(config.model);
-    if (!modelValidation.valid) {
-      return modelValidation;
-    }
-  }
-
   // Validate providers
   if (config.providers && typeof config.providers === 'object') {
     for (const [id, provider] of Object.entries(config.providers)) {
@@ -454,19 +446,21 @@ export function validateExtensionSettings(ext: any): ValidationResult {
 // ModelRegistry has been removed - validation now handled by AgentConfig
 
 /**
- * Get default model ID (simplified - ModelRegistry removed)
+ * Get default model ID
  *
  * @param config Agent configuration
  * @returns Default model ID
  */
 export function getDefaultModel(config: any): string {
-  const selected = config?.model?.selected;
+  const selectedModelId = config?.selectedModelId;
 
-  if (!selected || selected.trim() === '') {
-    return 'gpt-5'; // Default model
+  if (!selectedModelId || selectedModelId.trim() === '') {
+    // Return first available model ID from registry if available
+    const firstModelId = Object.keys(config?.modelRegistry || {})[0];
+    return firstModelId || ''; // Return empty if no models available
   }
 
-  return selected;
+  return selectedModelId;
 }
 
 /**

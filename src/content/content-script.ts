@@ -9,7 +9,12 @@ import { captureInteractionContent } from '../tools/dom/interactionCapture';
 import type { CaptureRequest } from '../tools/dom/pageModel';
 import type { ActionCommand, ActionExecutionResult } from '../types/page-actions';
 
+// NEW DOM TOOL v3.0
+import { DomTool } from './dom';
+import type { DomToolConfig, SerializationOptions } from '../types/domTool';
+
 let router: MessageRouter | null = null;
+let domTool: DomTool | null = null;
 
 interface PageContext {
 	url: string;
@@ -36,6 +41,27 @@ function initialize(): void {
 	announcePresence();
 }
 
+/**
+ * Get or create DomTool singleton instance
+ * NEW DOM TOOL v3.0
+ */
+function getDomTool(config?: Partial<DomToolConfig>): DomTool {
+	if (!domTool) {
+		domTool = new DomTool({
+			autoInvalidate: true,
+			mutationThrottle: 500,
+			maxInteractiveElements: 400,
+			maxTreeDepth: 50,
+			captureIframes: true,
+			captureShadowDom: true,
+			snapshotTimeout: 30000,
+			...config,
+		});
+		console.log('[Browserx] DomTool v3.0 initialized');
+	}
+	return domTool;
+}
+
 function setupMessageHandlers(): void {
 	if (!router) {
 		return;
@@ -46,19 +72,45 @@ function setupMessageHandlers(): void {
 		timestamp: Date.now(),
 		initLevel: getInitLevel(),
 		readyState: document.readyState,
-		version: '1.0.0',
-		capabilities: ['dom_capture_v2', 'page_actions']
+		version: '3.0.0',
+		capabilities: ['dom_capture_v2', 'dom_tool_v3', 'page_actions']
 	}));
 
 	router.on(MessageType.TAB_COMMAND, async (message) => {
 		const { command, args } = message.payload;
 
+		// OLD DOM TOOL (v2.0) - DEPRECATED
 		if (command === 'capture-interaction-content') {
 			return captureInteractionContentInPage(args as CaptureRequest);
 		}
 
 		if (command === 'build-snapshot') {
 			return buildSnapshotInPage(args as CaptureRequest);
+		}
+
+		// NEW DOM TOOL (v3.0)
+		if (command === 'dom.getSnapshot') {
+			return domGetSnapshot(args as SerializationOptions);
+		}
+
+		if (command === 'dom.click') {
+			const { nodeId, options } = args as { nodeId: string; options?: any };
+			return domClick(nodeId, options);
+		}
+
+		if (command === 'dom.type') {
+			const { nodeId, text, options } = args as { nodeId: string; text: string; options?: any };
+			return domType(nodeId, text, options);
+		}
+
+		if (command === 'dom.keypress') {
+			const { key, options } = args as { key: string; options?: any };
+			return domKeypress(key, options);
+		}
+
+		if (command === 'dom.buildSnapshot') {
+			const { trigger } = args as { trigger?: 'action' | 'navigation' | 'manual' | 'mutation' };
+			return domBuildSnapshot(trigger);
 		}
 
 		throw new Error(`Unknown command: ${command}`);
@@ -130,6 +182,136 @@ async function buildSnapshotInPage(options: CaptureRequest = {}) {
 	}
 }
 
+/**
+ * NEW DOM TOOL v3.0 - Message Handler Functions
+ */
+
+/**
+ * Get serialized DOM snapshot for LLM consumption
+ */
+async function domGetSnapshot(options?: SerializationOptions) {
+	try {
+		const tool = getDomTool();
+		const serialized = await tool.get_serialized_dom(options);
+
+		console.log('[Browserx] DOM snapshot generated', {
+			nodes: serialized.page.body ? countNodes(serialized.page.body) : 0,
+			iframes: serialized.page.iframes?.length || 0,
+			shadowDoms: serialized.page.shadowDoms?.length || 0,
+		});
+
+		return serialized;
+	} catch (error) {
+		console.error('[Browserx] Failed to get DOM snapshot:', error);
+		throw error;
+	}
+}
+
+/**
+ * Execute click action on an element
+ */
+async function domClick(nodeId: string, options?: any) {
+	try {
+		const tool = getDomTool();
+		const result = await tool.click(nodeId, options);
+
+		console.log('[Browserx] Click executed', {
+			nodeId,
+			success: result.success,
+			duration: result.duration,
+			changes: result.changes,
+		});
+
+		return result;
+	} catch (error) {
+		console.error('[Browserx] Click failed:', error);
+		throw error;
+	}
+}
+
+/**
+ * Execute type action on an element
+ */
+async function domType(nodeId: string, text: string, options?: any) {
+	try {
+		const tool = getDomTool();
+		const result = await tool.type(nodeId, text, options);
+
+		console.log('[Browserx] Type executed', {
+			nodeId,
+			text: text.substring(0, 50),
+			success: result.success,
+			duration: result.duration,
+			valueChanged: result.changes.valueChanged,
+		});
+
+		return result;
+	} catch (error) {
+		console.error('[Browserx] Type failed:', error);
+		throw error;
+	}
+}
+
+/**
+ * Execute keypress action
+ */
+async function domKeypress(key: string, options?: any) {
+	try {
+		const tool = getDomTool();
+		const result = await tool.keypress(key, options);
+
+		console.log('[Browserx] Keypress executed', {
+			key,
+			success: result.success,
+			duration: result.duration,
+			changes: result.changes,
+		});
+
+		return result;
+	} catch (error) {
+		console.error('[Browserx] Keypress failed:', error);
+		throw error;
+	}
+}
+
+/**
+ * Build/rebuild DOM snapshot
+ */
+async function domBuildSnapshot(trigger: 'action' | 'navigation' | 'manual' | 'mutation' = 'manual') {
+	try {
+		const tool = getDomTool();
+		const snapshot = await tool.buildSnapshot(trigger);
+
+		console.log('[Browserx] Snapshot built', {
+			trigger,
+			stats: snapshot.stats,
+			timestamp: snapshot.timestamp,
+		});
+
+		return {
+			success: true,
+			timestamp: snapshot.timestamp,
+			stats: snapshot.stats,
+		};
+	} catch (error) {
+		console.error('[Browserx] Snapshot build failed:', error);
+		throw error;
+	}
+}
+
+/**
+ * Count nodes in serialized tree (for logging)
+ */
+function countNodes(node: any): number {
+	let count = 1;
+	if (node.children) {
+		for (const child of node.children) {
+			count += countNodes(child);
+		}
+	}
+	return count;
+}
+
 function getPageContext(): PageContext {
 	const location = window.location;
 	const metadata: Record<string, string> = {};
@@ -174,7 +356,16 @@ function announcePresence(): void {
 
 	router.send(MessageType.TOOL_RESULT, {
 		type: 'tools-available',
-		tools: ['capture-interaction-content', 'build-snapshot', 'page_action'],
+		tools: [
+			'capture-interaction-content',  // OLD - v2.0 (deprecated)
+			'build-snapshot',                // OLD - v2.0 (deprecated)
+			'dom.getSnapshot',               // NEW - v3.0
+			'dom.click',                     // NEW - v3.0
+			'dom.type',                      // NEW - v3.0
+			'dom.keypress',                  // NEW - v3.0
+			'dom.buildSnapshot',             // NEW - v3.0
+			'page_action'                    // Page actions
+		],
 		tabId: getTabId()
 	}).catch(() => {
 		/* ignore connection errors */
@@ -195,6 +386,11 @@ function getInitLevel(): number {
 window.addEventListener('pagehide', () => {
 	if (router) {
 		router.cleanup();
+	}
+	if (domTool) {
+		domTool.destroy();
+		domTool = null;
+		console.log('[Browserx] DomTool v3.0 destroyed');
 	}
 });
 

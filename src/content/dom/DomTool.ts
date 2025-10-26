@@ -179,11 +179,11 @@ export class DomToolImpl implements DomTool, IDomToolEventEmitter {
       throw new Error(`Element is not connected to DOM: ${nodeId}`);
     }
 
+    // Emit action event for visual effects BEFORE execution (fire-and-forget)
+    this.emitAgentAction("click", element, element.getBoundingClientRect());
+
     // Execute click
     const result = await executeClick(element, nodeId, options);
-
-    // Emit action event for visual effects AFTER successful execution (fire-and-forget)
-    this.emitAgentAction("click", element, element.getBoundingClientRect());
 
     // Trigger async rebuild (don't wait)
     this.buildSnapshot("action").catch((error) => {
@@ -217,11 +217,11 @@ export class DomToolImpl implements DomTool, IDomToolEventEmitter {
       throw new Error(`Element is not connected to DOM: ${nodeId}`);
     }
 
+    // Emit action event for visual effects BEFORE execution (fire-and-forget)
+    this.emitAgentAction("type", element, element.getBoundingClientRect());
+
     // Execute type
     const result = await executeType(element, nodeId, text, options);
-
-    // Emit action event for visual effects AFTER successful execution (fire-and-forget)
-    this.emitAgentAction("type", element, element.getBoundingClientRect());
 
     // Trigger async rebuild (don't wait)
     this.buildSnapshot("action").catch((error) => {
@@ -258,11 +258,11 @@ export class DomToolImpl implements DomTool, IDomToolEventEmitter {
       nodeId = options.targetNodeId;
     }
 
+    // Emit action event for visual effects BEFORE execution (fire-and-forget)
+    this.emitAgentAction("keypress", element, element ? element.getBoundingClientRect() : null);
+
     // Execute keypress
     const result = await executeKeyPress(key, nodeId, element, options);
-
-    // Emit action event for visual effects AFTER successful execution (fire-and-forget)
-    this.emitAgentAction("keypress", element, element ? element.getBoundingClientRect() : null);
 
     // Trigger async rebuild (don't wait)
     this.buildSnapshot("action").catch((error) => {

@@ -127,6 +127,12 @@
         perturbance: config.rippleConfig?.perturbance ?? 0.03,
       });
 
+      // Fix z-index to be between overlay (2147483646) and page content
+      // Position it below the overlay so ripples are visible through the semi-transparent overlay
+      if (waterRipple.canvas) {
+        waterRipple.canvas.style.zIndex = '2147483645';
+      }
+
       console.debug('[VisualEffectController] Water ripple effect initialized');
     } catch (error) {
       console.warn('[VisualEffectController] Failed to initialize water ripple (WebGL may not be supported):', error);
@@ -159,6 +165,11 @@
 
       if (waterRipple && config.enableRippleEffects) {
         try {
+          // Ensure canvas is visible before dropping ripple
+          if (!waterRipple.visible) {
+            waterRipple.turnOn();
+          }
+
           waterRipple.drop(
             x,
             y,
@@ -234,6 +245,15 @@
       takeoverActive: false,
     }));
 
+    // Turn on water ripple canvas for visual effects
+    if (waterRipple) {
+      try {
+        waterRipple.turnOn();
+      } catch (error) {
+        handleError('Water ripple turnOn error', error);
+      }
+    }
+
     notifyStateChange();
   }
 
@@ -248,6 +268,15 @@
       visible: false,
       agentSessionActive: false,
     }));
+
+    // Turn off water ripple canvas
+    if (waterRipple) {
+      try {
+        waterRipple.turnOff();
+      } catch (error) {
+        handleError('Water ripple turnOff error', error);
+      }
+    }
 
     resetStores();
     notifyStateChange();

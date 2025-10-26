@@ -71,9 +71,8 @@
     height: 100vh;
     z-index: 2147483646; /* Just below cursor (max is 2147483647) */
 
-    /* Visual appearance */
-    background-color: rgba(0, 0, 0, 0.3);
-    backdrop-filter: blur(2px);
+    /* Visual appearance - crystal clear with 50% dark transparency */
+    background-color: rgba(0, 0, 0, 0.5);
 
     /* Input blocking */
     pointer-events: all;

@@ -185,6 +185,11 @@ export class TreeBuilder {
 
     for (const child of Array.from(element.children)) {
       try {
+        // Skip visual effects host element to prevent pollution of virtual DOM
+        if (this.shouldSkipElement(child)) {
+          continue;
+        }
+
         const childNode = await this.buildNode(child, depth + 1, oldSnapshot);
         children.push(childNode);
       } catch (error) {
@@ -194,6 +199,25 @@ export class TreeBuilder {
     }
 
     return children.length > 0 ? children : undefined;
+  }
+
+  /**
+   * Check if element should be skipped from virtual DOM
+   *
+   * Excludes browserx visual effects and other injected elements
+   */
+  private shouldSkipElement(element: Element): boolean {
+    // Skip browserx visual effects host
+    if (element.id === 'browserx-visual-effects-host') {
+      return true;
+    }
+
+    // Skip elements with data-browserx-visual-effect attribute
+    if (element.hasAttribute('data-browserx-visual-effect')) {
+      return true;
+    }
+
+    return false;
   }
 
   /**

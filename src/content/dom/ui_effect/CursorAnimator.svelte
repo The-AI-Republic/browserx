@@ -34,6 +34,15 @@
   const unsubscribers: Array<() => void> = [];
 
   onMount(() => {
+    // Initialize cursor position to center of viewport (FR-008)
+    const centerX = window.innerWidth / 2;
+    const centerY = window.innerHeight / 2;
+    cursorPosition.set({
+      x: centerX,
+      y: centerY,
+      timestamp: Date.now(),
+    });
+
     // Subscribe to cursor position
     unsubscribers.push(
       cursorPosition.subscribe(pos => {

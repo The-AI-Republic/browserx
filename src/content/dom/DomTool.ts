@@ -26,6 +26,7 @@ import type {
 } from "../../types/domTool";
 import { DEFAULT_CONFIG } from "../../types/domTool";
 import { TreeBuilder } from "./builders/TreeBuilder";
+import { MutationTracker } from "./builders/MutationTracker";
 import { DomSnapshotImpl, capturePageContext } from "./DomSnapshot";
 import { executeClick } from "./actions/ClickExecutor";
 import { executeType } from "./actions/InputExecutor";
@@ -39,18 +40,22 @@ import { dispatchVisualEffectEvent } from "./ui_effect/contracts/domtool-events"
  * Singleton per page (instantiated in content script).
  * Manages DOM snapshots and executes actions.
  * Implements IDomToolEventEmitter for visual effects integration.
+ * Supports incremental updates via MutationTracker.
  */
 export class DomToolImpl implements DomTool, IDomToolEventEmitter {
   private _domSnapshot: DomSnapshot | null = null;
   readonly config: Required<DomToolConfig>;
   private mutationObserver?: MutationObserver;
   private treeBuilder: TreeBuilder;
+  private mutationTracker: MutationTracker;
   private mutationThrottleTimeout?: ReturnType<typeof setTimeout>;
   private isRebuilding = false;
+  private useIncrementalUpdates = true; // Enable incremental updates by default
 
   constructor(config: DomToolConfig = {}) {
     this.config = { ...DEFAULT_CONFIG, ...config };
     this.treeBuilder = new TreeBuilder(this.config);
+    this.mutationTracker = new MutationTracker();
 
     // Setup auto-invalidation if enabled
     if (this.config.autoInvalidate) {
@@ -89,10 +94,28 @@ export class DomToolImpl implements DomTool, IDomToolEventEmitter {
     try {
       const startTime = Date.now();
 
-      // Build virtual tree
+      // Collect mutations for incremental update (if enabled and mutations exist)
+      let dirtyElements: Set<Element> | undefined;
+      if (this.useIncrementalUpdates && this.mutationTracker.hasMutations()) {
+        const mutationInfo = this.mutationTracker.collectMutations();
+
+        // Build set of all affected elements
+        dirtyElements = new Set([
+          ...mutationInfo.addedElements,
+          ...mutationInfo.modifiedElements,
+          ...mutationInfo.dirtyAncestors,
+        ]);
+
+        console.log(
+          `[DomTool] Incremental update: ${dirtyElements.size} dirty elements (${mutationInfo.mutationCount} mutations)`
+        );
+      }
+
+      // Build virtual tree (with incremental support)
       const virtualDom = await this.treeBuilder.buildTree(
         document.body,
-        this._domSnapshot || undefined
+        this._domSnapshot || undefined,
+        dirtyElements
       );
 
       // Capture page context
@@ -115,6 +138,11 @@ export class DomToolImpl implements DomTool, IDomToolEventEmitter {
 
       // Replace old snapshot
       this._domSnapshot = snapshot;
+
+      // Start tracking mutations for next rebuild (if enabled)
+      if (this.useIncrementalUpdates && !this.mutationTracker.hasMutations()) {
+        this.mutationTracker.startTracking(document.body);
+      }
 
       console.log(
         `[DomTool] Snapshot built (trigger: ${trigger}, time: ${stats.captureTimeMs}ms, nodes: ${stats.totalNodes})`
@@ -293,6 +321,9 @@ export class DomToolImpl implements DomTool, IDomToolEventEmitter {
       this.mutationObserver.disconnect();
       this.mutationObserver = undefined;
     }
+
+    // Stop mutation tracker
+    this.mutationTracker.stopTracking();
 
     // Clear throttle timeout
     if (this.mutationThrottleTimeout) {

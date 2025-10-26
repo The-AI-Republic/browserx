@@ -11,7 +11,6 @@
 import { BaseTool, createToolDefinition, type BaseToolRequest, type BaseToolOptions, type ToolDefinition } from './BaseTool';
 import { DomService, DOMServiceError, DOMServiceErrorCode } from './dom/service';
 import type { DOMCaptureRequest, DOMCaptureResponse } from '../types/domTool';
-import { DOMErrorCode } from '../types/domTool';
 import { MessageType } from '../core/MessageRouter';
 /**
  * DOM Tool v2.0 Implementation

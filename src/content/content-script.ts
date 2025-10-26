@@ -13,8 +13,13 @@ import type { ActionCommand, ActionExecutionResult } from '../types/page-actions
 import { DomTool } from './dom';
 import type { DomToolConfig, SerializationOptions } from '../types/domTool';
 
+// VISUAL EFFECTS v3.0
+import VisualEffectController from './dom/ui_effect/VisualEffectController.svelte';
+
 let router: MessageRouter | null = null;
 let domTool: DomTool | null = null;
+let visualEffectController: any = null;
+let visualEffectShadowHost: HTMLElement | null = null;
 
 interface PageContext {
 	url: string;
@@ -39,6 +44,38 @@ function initialize(): void {
 	router = new MessageRouter('content');
 	setupMessageHandlers();
 	announcePresence();
+
+	// Initialize visual effects controller
+	initializeVisualEffects();
+}
+
+/**
+ * Initialize Visual Effect Controller
+ * Mounts Svelte component in Shadow DOM for style isolation
+ */
+function initializeVisualEffects(): void {
+	try {
+		// Create shadow host element
+		visualEffectShadowHost = document.createElement('div');
+		visualEffectShadowHost.id = 'browserx-visual-effects-host';
+		visualEffectShadowHost.style.cssText = 'position: fixed; top: 0; left: 0; width: 0; height: 0; z-index: 2147483647;';
+
+		// Attach shadow DOM (closed mode for isolation)
+		const shadowRoot = visualEffectShadowHost.attachShadow({ mode: 'closed' });
+
+		// Mount Visual Effect Controller Svelte component
+		visualEffectController = new VisualEffectController({
+			target: shadowRoot,
+		});
+
+		// Append to document body
+		document.body.appendChild(visualEffectShadowHost);
+
+		console.log('[Browserx] Visual effects initialized');
+	} catch (error) {
+		// Graceful degradation - visual effects failure never blocks content script
+		console.error('[Browserx] Failed to initialize visual effects:', error);
+	}
 }
 
 /**
@@ -58,6 +95,9 @@ function getDomTool(config?: Partial<DomToolConfig>): DomTool {
 			...config,
 		});
 		console.log('[Browserx] DomTool v3.0 initialized');
+
+		// Emit agent start event for visual effects (T024)
+		domTool.emitAgentStart();
 	}
 	return domTool;
 }
@@ -391,6 +431,15 @@ window.addEventListener('pagehide', () => {
 		domTool.destroy();
 		domTool = null;
 		console.log('[Browserx] DomTool v3.0 destroyed');
+	}
+	if (visualEffectController) {
+		visualEffectController.$destroy();
+		visualEffectController = null;
+		console.log('[Browserx] Visual effects destroyed');
+	}
+	if (visualEffectShadowHost && visualEffectShadowHost.parentNode) {
+		visualEffectShadowHost.parentNode.removeChild(visualEffectShadowHost);
+		visualEffectShadowHost = null;
 	}
 });
 

@@ -30,14 +30,17 @@ import { DomSnapshotImpl, capturePageContext } from "./DomSnapshot";
 import { executeClick } from "./actions/ClickExecutor";
 import { executeType } from "./actions/InputExecutor";
 import { executeKeyPress } from "./actions/KeyPressExecutor";
+import type { IDomToolEventEmitter, AgentActionType } from "./ui_effect/contracts/domtool-events";
+import { dispatchVisualEffectEvent } from "./ui_effect/contracts/domtool-events";
 
 /**
  * DomTool implementation
  *
  * Singleton per page (instantiated in content script).
  * Manages DOM snapshots and executes actions.
+ * Implements IDomToolEventEmitter for visual effects integration.
  */
-export class DomToolImpl implements DomTool {
+export class DomToolImpl implements DomTool, IDomToolEventEmitter {
   private _domSnapshot: DomSnapshot | null = null;
   readonly config: Required<DomToolConfig>;
   private mutationObserver?: MutationObserver;
@@ -150,6 +153,9 @@ export class DomToolImpl implements DomTool {
    * @returns Promise resolving to serialized DOM
    */
   async get_serialized_dom(options?: SerializationOptions): Promise<SerializedDom> {
+    // Emit serialize event for visual effects (fire-and-forget)
+    this.emitAgentSerialize();
+
     const snapshot = await this.getSnapshot();
     return snapshot.serialize(options);
   }
@@ -175,6 +181,9 @@ export class DomToolImpl implements DomTool {
 
     // Execute click
     const result = await executeClick(element, nodeId, options);
+
+    // Emit action event for visual effects AFTER successful execution (fire-and-forget)
+    this.emitAgentAction("click", element, element.getBoundingClientRect());
 
     // Trigger async rebuild (don't wait)
     this.buildSnapshot("action").catch((error) => {
@@ -210,6 +219,9 @@ export class DomToolImpl implements DomTool {
 
     // Execute type
     const result = await executeType(element, nodeId, text, options);
+
+    // Emit action event for visual effects AFTER successful execution (fire-and-forget)
+    this.emitAgentAction("type", element, element.getBoundingClientRect());
 
     // Trigger async rebuild (don't wait)
     this.buildSnapshot("action").catch((error) => {
@@ -249,6 +261,9 @@ export class DomToolImpl implements DomTool {
     // Execute keypress
     const result = await executeKeyPress(key, nodeId, element, options);
 
+    // Emit action event for visual effects AFTER successful execution (fire-and-forget)
+    this.emitAgentAction("keypress", element, element ? element.getBoundingClientRect() : null);
+
     // Trigger async rebuild (don't wait)
     this.buildSnapshot("action").catch((error) => {
       console.error("[DomTool] Failed to rebuild snapshot after keypress:", error);
@@ -270,6 +285,9 @@ export class DomToolImpl implements DomTool {
    * Clean up resources (observers, references)
    */
   destroy(): void {
+    // Emit stop event for visual effects
+    this.emitAgentStop();
+
     // Disconnect mutation observer
     if (this.mutationObserver) {
       this.mutationObserver.disconnect();
@@ -286,6 +304,63 @@ export class DomToolImpl implements DomTool {
     this._domSnapshot = null;
 
     console.log("[DomTool] Destroyed");
+  }
+
+  /**
+   * IDomToolEventEmitter Implementation
+   * Fire-and-forget visual effect events (no blocking, no await)
+   */
+
+  emitAgentStart(): void {
+    try {
+      dispatchVisualEffectEvent({
+        type: "agent-start",
+        timestamp: Date.now(),
+      });
+    } catch (error) {
+      // Silently fail - visual effects never block DomTool
+      console.debug("[DomTool] Visual effect event emission failed:", error);
+    }
+  }
+
+  emitAgentStop(): void {
+    try {
+      dispatchVisualEffectEvent({
+        type: "agent-stop",
+        timestamp: Date.now(),
+      });
+    } catch (error) {
+      console.debug("[DomTool] Visual effect event emission failed:", error);
+    }
+  }
+
+  emitAgentAction(
+    action: AgentActionType,
+    element: Element | null,
+    boundingBox: DOMRect | null
+  ): void {
+    try {
+      dispatchVisualEffectEvent({
+        type: "agent-action",
+        action,
+        element,
+        boundingBox,
+        timestamp: Date.now(),
+      });
+    } catch (error) {
+      console.debug("[DomTool] Visual effect event emission failed:", error);
+    }
+  }
+
+  emitAgentSerialize(): void {
+    try {
+      dispatchVisualEffectEvent({
+        type: "agent-serialize",
+        timestamp: Date.now(),
+      });
+    } catch (error) {
+      console.debug("[DomTool] Visual effect event emission failed:", error);
+    }
   }
 
   /**

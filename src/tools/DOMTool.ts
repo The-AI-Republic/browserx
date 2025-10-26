@@ -216,12 +216,19 @@ export class DOMTool extends BaseTool {
 
     const response = await chrome.tabs.sendMessage(tabId, {
       type: MessageType.TAB_COMMAND,
-      command: 'dom.getSnapshot',
-      args: options || {},
+      payload: {
+        command: 'dom.getSnapshot',
+        args: options || {},
+      },
     });
 
     if (!response) {
       throw new Error('No response from content script');
+    }
+
+    // MessageRouter wraps responses in { success: true, data: ... }
+    if (response.success && response.data) {
+      return response.data as SerializedDom;
     }
 
     return response as SerializedDom;
@@ -241,8 +248,10 @@ export class DOMTool extends BaseTool {
       async () => {
         return await chrome.tabs.sendMessage(tabId, {
           type: MessageType.TAB_COMMAND,
-          command: 'dom.click',
-          args: { nodeId, options: options || {} },
+          payload: {
+            command: 'dom.click',
+            args: { nodeId, options: options || {} },
+          },
         });
       },
       3, // maxRetries
@@ -253,7 +262,8 @@ export class DOMTool extends BaseTool {
       throw new Error('No response from content script');
     }
 
-    const result = response as ActionResult;
+    // MessageRouter wraps responses in { success: true, data: ... }
+    const result = (response.success && response.data ? response.data : response) as ActionResult;
 
     // Check if action succeeded
     if (!result.success) {
@@ -278,8 +288,10 @@ export class DOMTool extends BaseTool {
       async () => {
         return await chrome.tabs.sendMessage(tabId, {
           type: MessageType.TAB_COMMAND,
-          command: 'dom.type',
-          args: { nodeId, text, options: options || {} },
+          payload: {
+            command: 'dom.type',
+            args: { nodeId, text, options: options || {} },
+          },
         });
       },
       3,
@@ -290,7 +302,8 @@ export class DOMTool extends BaseTool {
       throw new Error('No response from content script');
     }
 
-    const result = response as ActionResult;
+    // MessageRouter wraps responses in { success: true, data: ... }
+    const result = (response.success && response.data ? response.data : response) as ActionResult;
 
     if (!result.success) {
       throw new Error(result.error || 'Type action failed');
@@ -313,8 +326,10 @@ export class DOMTool extends BaseTool {
       async () => {
         return await chrome.tabs.sendMessage(tabId, {
           type: MessageType.TAB_COMMAND,
-          command: 'dom.keypress',
-          args: { key, options: options || {} },
+          payload: {
+            command: 'dom.keypress',
+            args: { key, options: options || {} },
+          },
         });
       },
       3,
@@ -325,7 +340,8 @@ export class DOMTool extends BaseTool {
       throw new Error('No response from content script');
     }
 
-    const result = response as ActionResult;
+    // MessageRouter wraps responses in { success: true, data: ... }
+    const result = (response.success && response.data ? response.data : response) as ActionResult;
 
     if (!result.success) {
       throw new Error(result.error || 'Keypress action failed');

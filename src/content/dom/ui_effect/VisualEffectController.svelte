@@ -21,6 +21,7 @@
     overlayState,
     effectQueue,
     visualEffectState,
+    animationState,
     resetStores,
     syncVisualEffectState,
   } from './stores';
@@ -419,7 +420,7 @@
       state = s;
     });
     unsubscribe();
-    return state;
+    return state!;
   }
 
   export function startAgentSession(): void {

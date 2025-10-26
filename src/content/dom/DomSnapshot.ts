@@ -18,6 +18,7 @@ import type {
   SerializedDom,
   SerializationOptions,
 } from "../../types/domTool";
+import { serialize } from "./serializers/Serializer";
 
 /**
  * DomSnapshot implementation
@@ -149,7 +150,6 @@ export class DomSnapshotImpl implements DomSnapshot {
    */
   serialize(options?: SerializationOptions): SerializedDom {
     // Use Serializer to convert VirtualNode tree to SerializedDom
-    const { serialize } = require("./serializers/Serializer");
     return serialize(this.virtualDom, this.context, options);
   }
 

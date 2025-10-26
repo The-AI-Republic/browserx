@@ -1,12 +1,10 @@
 /**
  * Lightweight content script used by Browserx.
- * Provides the minimal surface required by DOMTool (captureInteractionContent)
- * and PageActionTool (PAGE_ACTION_EXECUTE).
+ * Provides DOM Tool v3.0 (snapshot, click, type, keypress) and
+ * page action execution handlers.
  */
 
 import { MessageRouter, MessageType } from '../core/MessageRouter';
-import { captureInteractionContent } from '../tools/dom/interactionCapture';
-import type { CaptureRequest } from '../tools/dom/pageModel';
 import type { ActionCommand, ActionExecutionResult } from '../types/page-actions';
 
 // NEW DOM TOOL v3.0
@@ -73,20 +71,11 @@ function setupMessageHandlers(): void {
 		initLevel: getInitLevel(),
 		readyState: document.readyState,
 		version: '3.0.0',
-		capabilities: ['dom_capture_v2', 'dom_tool_v3', 'page_actions']
+		capabilities: ['dom_tool_v3']
 	}));
 
 	router.on(MessageType.TAB_COMMAND, async (message) => {
 		const { command, args } = message.payload;
-
-		// OLD DOM TOOL (v2.0) - DEPRECATED
-		if (command === 'capture-interaction-content') {
-			return captureInteractionContentInPage(args as CaptureRequest);
-		}
-
-		if (command === 'build-snapshot') {
-			return buildSnapshotInPage(args as CaptureRequest);
-		}
 
 		// NEW DOM TOOL (v3.0)
 		if (command === 'dom.getSnapshot') {
@@ -127,64 +116,6 @@ function setupMessageHandlers(): void {
 		}
 	});
 }
-
-async function captureInteractionContentInPage(options: CaptureRequest = {}) {
-	try {
-		// IMPORTANT: Capture the entire document starting from <html> (including <head> and <body>)
-		// This ensures we have full page context (title, meta tags, all content)
-		// Serialization for LLM will extract only relevant parts (title, headings, body controls)
-		const html = document.documentElement.outerHTML;
-		const pageModel = await captureInteractionContent(html, {
-			...options,
-			baseUrl: options.baseUrl || window.location.href
-		});
-
-		return pageModel;
-	} catch (error) {
-		console.error('[Content Script] Failed to capture interaction content:', error);
-		throw error;
-	}
-}
-
-/**
- * Builds a new snapshot of the page
- *
- * This is typically called:
- * - After page actions (click, type, keypress) to capture DOM changes
- * - After navigation events (popstate, pushstate)
- * - On manual trigger from external tools
- * - After significant DOM mutations
- *
- * @param options - Capture configuration options
- * @returns PageModel snapshot
- */
-async function buildSnapshotInPage(options: CaptureRequest = {}) {
-	try {
-		console.log('[Content Script] Building new DOM snapshot');
-
-		// Build snapshot by capturing current DOM state
-		const html = document.documentElement.outerHTML;
-		const pageModel = await captureInteractionContent(html, {
-			...options,
-			baseUrl: options.baseUrl || window.location.href
-		});
-
-		console.log('[Content Script] Snapshot built successfully', {
-			controls: pageModel.controls.length,
-			headings: pageModel.headings.length,
-			regions: pageModel.regions.length
-		});
-
-		return pageModel;
-	} catch (error) {
-		console.error('[Content Script] Failed to build snapshot:', error);
-		throw error;
-	}
-}
-
-/**
- * NEW DOM TOOL v3.0 - Message Handler Functions
- */
 
 /**
  * Get serialized DOM snapshot for LLM consumption
@@ -357,13 +288,11 @@ function announcePresence(): void {
 	router.send(MessageType.TOOL_RESULT, {
 		type: 'tools-available',
 		tools: [
-			'capture-interaction-content',  // OLD - v2.0 (deprecated)
-			'build-snapshot',                // OLD - v2.0 (deprecated)
-			'dom.getSnapshot',               // NEW - v3.0
-			'dom.click',                     // NEW - v3.0
-			'dom.type',                      // NEW - v3.0
-			'dom.keypress',                  // NEW - v3.0
-			'dom.buildSnapshot',             // NEW - v3.0
+			'dom.getSnapshot',               // v3.0
+			'dom.click',                     // v3.0
+			'dom.type',                      // v3.0
+			'dom.keypress',                  // v3.0
+			'dom.buildSnapshot',             // v3.0
 			'page_action'                    // Page actions
 		],
 		tabId: getTabId()
@@ -467,5 +396,5 @@ async function executeVerifyAction(action: ActionCommand): Promise<ActionExecuti
 	throw new Error('Verify action not yet implemented');
 }
 
-export { getPageContext, captureInteractionContentInPage, buildSnapshotInPage, handlePageAction };
+export { getPageContext, handlePageAction };
 

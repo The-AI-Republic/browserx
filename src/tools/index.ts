@@ -11,7 +11,6 @@ import { DOMTool } from './DOMTool';
 import { NavigationTool } from './NavigationTool';
 import { StorageTool } from './StorageTool';
 import { TabTool } from './TabTool';
-import { PageActionTool } from './PageActionTool';
 import type { IToolsConfig } from '../config/types';
 
 // Re-export all tools
@@ -26,7 +25,6 @@ export { DOMTool } from './DOMTool';
 export { NavigationTool } from './NavigationTool';
 export { StorageTool } from './StorageTool';
 export { TabTool } from './TabTool';
-export { PageActionTool } from './PageActionTool';
 
 /**
  * Register browser automation tools based on configuration
@@ -145,13 +143,8 @@ export async function registerTools(registry: ToolRegistry, toolsConfig: IToolsC
       console.log('TabTool disabled in configuration, skipping...');
     }
 
-    // Page Action Tool
-    if (isToolEnabled('page_action')) {
-      const pageActionTool = new PageActionTool();
-      await registerTool('page_action', pageActionTool);
-    } else {
-      console.log('PageActionTool disabled in configuration, skipping...');
-    }
+    // Page Action Tool - REMOVED: Functionality merged into DOMTool v3.0
+    // Use DOMTool with action parameter instead
 
     console.log('Advanced browser tools registration completed');
   } catch (error) {

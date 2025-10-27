@@ -17,6 +17,7 @@
   import { onMount, onDestroy } from 'svelte';
   import Overlay from './Overlay.svelte';
   import CursorAnimator from './CursorAnimator.svelte';
+  import ControlButtons from './ControlButtons.svelte';
   import {
     overlayState,
     effectQueue,
@@ -50,6 +51,16 @@
 
   // Water ripple effect instance
   let waterRipple: any = null;
+
+  // Control buttons visibility state
+  let showControlButtons = false;
+  let takeoverActive = false;
+
+  // Subscribe to overlay state for control buttons visibility
+  overlayState.subscribe(state => {
+    showControlButtons = state.visible && state.agentSessionActive;
+    takeoverActive = state.takeoverActive;
+  });
 
   // Configuration
   let config: VisualEffectConfig = { ...DEFAULT_CONFIG };
@@ -134,10 +145,10 @@
         perturbance: config.rippleConfig?.perturbance ?? 0.03,
       });
 
-      // Fix z-index to be between overlay (2147483646) and page content
-      // Position it below the overlay so ripples are visible through the semi-transparent overlay
+      // Set z-index to be second highest (below cursor/buttons, above overlay)
+      // Ripples are visible through the semi-transparent overlay
       if (waterRipple.canvas) {
-        waterRipple.canvas.style.zIndex = '2147483645';
+        waterRipple.canvas.style.zIndex = '2147483646';
       }
 
       console.debug('[VisualEffectController] Water ripple effect initialized');
@@ -365,6 +376,20 @@
   }
 
   /**
+   * Handle takeover button click
+   *
+   * Removes overlay, allows user to interact with page.
+   */
+  function handleTakeOver() {
+    overlayState.update(state => ({
+      ...state,
+      visible: false,
+      takeoverActive: true,
+    }));
+    notifyStateChange();
+  }
+
+  /**
    * Stop agent session (internal handler)
    *
    * Sends message to service worker to terminate agent.
@@ -531,6 +556,14 @@
 <div class="visual-effect-controller" data-testid="visual-effect-controller">
   <Overlay />
   <CursorAnimator bind:this={cursorAnimatorRef} />
+  {#if showControlButtons && !takeoverActive}
+    <div class="control-buttons-wrapper">
+      <ControlButtons
+        on:takeover={handleTakeOver}
+        on:stopagent={handleStopAgentButton}
+      />
+    </div>
+  {/if}
 </div>
 
 <style>
@@ -543,5 +576,17 @@
     height: 0;
     pointer-events: none;
     z-index: 2147483647;
+  }
+
+  .control-buttons-wrapper {
+    /* Position */
+    position: fixed;
+    bottom: 32px; /* Spacing from bottom */
+    left: 50%;
+    transform: translateX(-50%); /* Center horizontally */
+    z-index: 2147483647; /* Same as cursor (highest layer) */
+
+    /* Allow pointer events for buttons */
+    pointer-events: all;
   }
 </style>

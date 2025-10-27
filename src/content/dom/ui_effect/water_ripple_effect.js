@@ -478,9 +478,6 @@ class WaterRipple {
         this._computeTextureBoundaries();
 
         if (this.running || this.undulating) {
-            // Run update 3x per frame for triple speed
-            this._update();
-            this._update();
             this._update();
         }
 

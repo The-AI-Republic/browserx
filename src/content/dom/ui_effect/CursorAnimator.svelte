@@ -11,6 +11,7 @@
    * - Speed boost when queue depth > 3 (1.5x faster)
    * - Smooth easing curves (easeInOutCubic default)
    * - Embedded SVG cursor (no file loading)
+   * - "browserx" label below cursor with capsule design
    *
    * @component
    */
@@ -276,6 +277,7 @@
     height="48"
     draggable="false"
   />
+  <div class="cursor-label">browserx</div>
 </div>
 
 <style>
@@ -316,5 +318,34 @@
     /* Performance */
     image-rendering: crisp-edges;
     image-rendering: -webkit-optimize-contrast;
+  }
+
+  .cursor-label {
+    /* Position below the cursor icon */
+    position: absolute;
+    top: 48px; /* Position below the 48px cursor icon */
+    left: 50%;
+    transform: translateX(-50%); /* Center horizontally */
+
+    /* Visual appearance - capsule shape */
+    background-color: #000000;
+    color: #ffffff;
+    padding: 4px 12px;
+    border-radius: 12px; /* Capsule shape */
+
+    /* Typography */
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+    font-size: 12px;
+    font-weight: 600;
+    line-height: 1.2;
+    white-space: nowrap;
+
+    /* Prevent drag/select */
+    user-select: none;
+    pointer-events: none;
+
+    /* Performance */
+    backface-visibility: hidden;
+    -webkit-font-smoothing: antialiased;
   }
 </style>

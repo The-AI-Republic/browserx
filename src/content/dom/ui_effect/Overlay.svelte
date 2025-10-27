@@ -2,20 +2,18 @@
   /**
    * Overlay Component
    *
-   * Semi-transparent overlay that blocks user input during agent operations.
+   * Dotted pattern overlay that blocks user input during agent operations.
    * Independent from ripple effects - visibility controlled separately.
    *
    * Features:
    * - Full viewport coverage with pointer-events blocking
-   * - Semi-transparent dark background (rgba(0, 0, 0, 0.3))
-   * - Hosts control buttons at bottom-center
+   * - Evenly distributed gray dots (half white half black) pattern
    * - Removed when user takes over control
    *
    * @component
    */
 
   import { overlayState } from './stores';
-  import ControlButtons from './ControlButtons.svelte';
 
   // Subscribe to overlay state
   let visible = false;
@@ -25,40 +23,10 @@
     visible = state.visible;
     takeoverActive = state.takeoverActive;
   });
-
-  // Handle takeover action from control buttons
-  function handleTakeOver() {
-    overlayState.update(state => ({
-      ...state,
-      visible: false,
-      takeoverActive: true,
-    }));
-  }
-
-  // Handle stop agent action from control buttons
-  function handleStopAgent() {
-    overlayState.update(state => ({
-      ...state,
-      visible: false,
-      agentSessionActive: false,
-    }));
-
-    // Dispatch custom event to notify controller to stop agent session
-    const event = new CustomEvent('browserx:stop-agent', {
-      bubbles: true,
-      composed: true, // Cross shadow DOM boundary
-    });
-    document.dispatchEvent(event);
-  }
 </script>
 
 {#if visible && !takeoverActive}
-  <div class="overlay" data-testid="visual-effect-overlay">
-    <ControlButtons
-      on:takeover={handleTakeOver}
-      on:stopagent={handleStopAgent}
-    />
-  </div>
+  <div class="overlay" data-testid="visual-effect-overlay"></div>
 {/if}
 
 <style>
@@ -69,10 +37,15 @@
     left: 0;
     width: 100vw;
     height: 100vh;
-    z-index: 2147483646; /* Just below cursor (max is 2147483647) */
+    z-index: 2147483645; /* Below ripple (2147483646) and cursor/buttons (2147483647) */
 
-    /* Visual appearance - crystal clear with 50% dark transparency */
-    background-color: rgba(0, 0, 0, 0.5);
+    /* Visual appearance - dotted pattern with gray dots (half white half black) */
+    /* Using radial gradient to create evenly distributed dots */
+    background-image:
+      radial-gradient(circle, rgba(128, 128, 128, 0.5) 1px, transparent 1px);
+    background-size: 16px 16px;
+    background-position: 0 0, 8px 8px;
+    background-color: transparent;
 
     /* Input blocking */
     pointer-events: all;
@@ -81,11 +54,8 @@
     will-change: opacity;
     transition: opacity 200ms ease-out;
 
-    /* Layout for control buttons */
-    display: flex;
-    align-items: flex-end; /* Bottom alignment */
-    justify-content: center; /* Horizontal center */
-    padding-bottom: 32px; /* Spacing from bottom */
+    /* Animation */
+    animation: fadeIn 200ms ease-out;
   }
 
   /* Fade in animation */
@@ -96,9 +66,5 @@
     to {
       opacity: 1;
     }
-  }
-
-  .overlay {
-    animation: fadeIn 200ms ease-out;
   }
 </style>

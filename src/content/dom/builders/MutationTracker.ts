@@ -51,7 +51,6 @@ export class MutationTracker {
    */
   startTracking(root: Element): void {
     if (this.isObserving) {
-      console.log(`[MutationTracker] Already tracking mutations`);
       return;
     }
 
@@ -59,7 +58,6 @@ export class MutationTracker {
 
     this.observer = new MutationObserver((mutationsList) => {
       this.mutations.push(...mutationsList);
-      console.log(`[MutationTracker] 📝 Recorded ${mutationsList.length} mutations (total: ${this.mutations.length})`);
     });
 
     // Observe all types of changes
@@ -73,7 +71,6 @@ export class MutationTracker {
     });
 
     this.isObserving = true;
-    console.log(`[MutationTracker] ✅ Started tracking DOM mutations`);
   }
 
   /**
@@ -93,8 +90,6 @@ export class MutationTracker {
    * @returns MutationInfo with all changes
    */
   collectMutations(): MutationInfo {
-    console.log(`[MutationTracker] ========== COLLECTING MUTATIONS ==========`);
-    console.log(`[MutationTracker] Total mutations to process: ${this.mutations.length}`);
 
     const addedElements = new Set<Element>();
     const removedElements = new Set<Element>();
@@ -157,22 +152,9 @@ export class MutationTracker {
 
     const mutationCount = this.mutations.length;
 
-    console.log(`[MutationTracker] Mutation breakdown:`, {
-      childList: childListCount,
-      attributes: attributeCount,
-      characterData: characterDataCount
-    });
-    console.log(`[MutationTracker] Affected elements:`, {
-      added: addedElements.size,
-      removed: removedElements.size,
-      modified: modifiedElements.size,
-      dirtyAncestors: dirtyAncestors.size
-    });
-    console.log(`[MutationTracker] Structural changes: ${hasStructuralChanges ? 'YES' : 'NO'}`);
 
     // Clear collected mutations
     this.mutations = [];
-    console.log(`[MutationTracker] Mutations cleared, ready for next collection`);
 
     return {
       addedElements,

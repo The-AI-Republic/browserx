@@ -168,10 +168,8 @@ export class TreeBuilder {
     const isInteractiveElement = isInteractive(element);
     if (matchedId) {
       if (isInteractiveElement || depth <= 1) {
-        console.log(`[TreeBuilder] ♻️ Reused node_id "${nodeId}" for:`, element.tagName, element.className || '(no class)', element.id || '(no id)');
       }
     } else if (isInteractiveElement || depth <= 1) {
-      console.log(`[TreeBuilder] ✨ New node_id "${nodeId}" for:`, element.tagName, element.className || '(no class)', element.id || '(no id)');
     }
 
     // Check visibility
@@ -191,7 +189,6 @@ export class TreeBuilder {
     if (visible) this.stats.visibleNodes++;
     if (isInteractiveElement) {
       this.stats.interactiveNodes++;
-      console.log(`[TreeBuilder] 🎯 Interactive element mapped: "${nodeId}" (${element.tagName} ${element.className || ''})`);
     }
 
     // Build children (if visible or should traverse hidden)

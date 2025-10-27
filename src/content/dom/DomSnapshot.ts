@@ -74,8 +74,11 @@ export class DomSnapshotImpl implements DomSnapshot {
   /**
    * Get real DOM element by node_id
    *
+   * Returns the element even if disconnected from DOM.
+   * Caller should check element.isConnected if needed.
+   *
    * @param nodeId - Node ID to look up
-   * @returns Element or null if not found/detached
+   * @returns Element or null if not found/garbage collected
    */
   getRealElement(nodeId: string): Element | null {
 
@@ -92,10 +95,9 @@ export class DomSnapshotImpl implements DomSnapshot {
       return null;
     }
 
-    if (!element.isConnected) {
-      console.warn(`[DomSnapshot] ⚠️ node_id "${nodeId}" element exists but is NOT connected to DOM`);
-    } else {
-    }
+    // Note: Element may not be connected to DOM anymore.
+    // This is expected during snapshot rebuilds when the page is dynamic.
+    // Callers should check element.isConnected if needed.
 
     return element;
   }

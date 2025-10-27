@@ -155,11 +155,24 @@ export class TreeBuilder {
   ): Promise<VirtualNode> {
     // Check depth limit
     if (depth > this.config.maxTreeDepth) {
-      throw new Error(`Max tree depth ${this.config.maxTreeDepth} exceeded`);
+      const error = `Max tree depth ${this.config.maxTreeDepth} exceeded`;
+      console.error(`[TreeBuilder] ❌ ${error}`);
+      throw new Error(error);
     }
 
     // Try to preserve node_id from old snapshot (enhanced matching)
-    const nodeId = this.matchElementEnhanced(element, oldSnapshot) || this.generateNodeId();
+    const matchedId = this.matchElementEnhanced(element, oldSnapshot);
+    const nodeId = matchedId || this.generateNodeId();
+
+    // Log ID reuse/generation for debugging (only for interactive or top-level elements)
+    const isInteractiveElement = isInteractive(element);
+    if (matchedId) {
+      if (isInteractiveElement || depth <= 1) {
+        console.log(`[TreeBuilder] ♻️ Reused node_id "${nodeId}" for:`, element.tagName, element.className || '(no class)', element.id || '(no id)');
+      }
+    } else if (isInteractiveElement || depth <= 1) {
+      console.log(`[TreeBuilder] ✨ New node_id "${nodeId}" for:`, element.tagName, element.className || '(no class)', element.id || '(no id)');
+    }
 
     // Check visibility
     const visible = isVisible(element);
@@ -176,7 +189,10 @@ export class TreeBuilder {
     // Update stats
     this.stats.totalNodes++;
     if (visible) this.stats.visibleNodes++;
-    if (isInteractive(element)) this.stats.interactiveNodes++;
+    if (isInteractiveElement) {
+      this.stats.interactiveNodes++;
+      console.log(`[TreeBuilder] 🎯 Interactive element mapped: "${nodeId}" (${element.tagName} ${element.className || ''})`);
+    }
 
     // Build children (if visible or should traverse hidden)
     if (visible || this.shouldTraverseHidden(element)) {

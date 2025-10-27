@@ -1,11 +1,9 @@
 /**
  * Lightweight content script used by Browserx.
- * Provides DOM Tool v3.0 (snapshot, click, type, keypress) and
- * page action execution handlers.
+ * Provides DOM Tool v3.0 (snapshot, click, type, keypress).
  */
 
 import { MessageRouter, MessageType } from '../core/MessageRouter';
-import type { ActionCommand, ActionExecutionResult } from '../types/page-actions';
 
 // NEW DOM TOOL v3.0
 import { DomTool } from './dom';
@@ -103,17 +101,6 @@ function setupMessageHandlers(): void {
 		}
 
 		throw new Error(`Unknown command: ${command}`);
-	});
-
-	router.on('PAGE_ACTION_EXECUTE' as MessageType, async (message) => {
-		try {
-			return await handlePageAction(message);
-		} catch (error) {
-			return {
-				success: false,
-				error: error instanceof Error ? error.message : 'Unknown error occurred'
-			};
-		}
 	});
 }
 
@@ -292,8 +279,7 @@ function announcePresence(): void {
 			'dom.click',                     // v3.0
 			'dom.type',                      // v3.0
 			'dom.keypress',                  // v3.0
-			'dom.buildSnapshot',             // v3.0
-			'page_action'                    // Page actions
+			'dom.buildSnapshot'              // v3.0
 		],
 		tabId: getTabId()
 	}).catch(() => {
@@ -325,76 +311,5 @@ window.addEventListener('pagehide', () => {
 
 initialize();
 
-/**
- * Handle page action execution request (from PageActionTool)
- */
-async function handlePageAction(message: any): Promise<any> {
-	const { action } = message;
-	const startTime = Date.now();
-
-	console.log(`[page-actions] Executing ${action.type} action on element:`, action.targetElement);
-
-	try {
-		let result: ActionExecutionResult;
-
-		switch (action.type) {
-			case 'click':
-				result = await executeClickAction(action);
-				break;
-
-			case 'input':
-				result = await executeInputAction(action);
-				break;
-
-			case 'scroll':
-				result = await executeScrollAction(action);
-				break;
-
-			case 'verify':
-				result = await executeVerifyAction(action);
-				break;
-
-			default:
-				throw new Error(`Unknown action type: ${action.type}`);
-		}
-
-		console.log(`[page-actions] Action completed in ${Date.now() - startTime}ms`);
-
-		return {
-			success: true,
-			result
-		};
-	} catch (error) {
-		console.error('[page-actions] Action failed:', error);
-
-		return {
-			success: false,
-			error: error instanceof Error ? error.message : String(error)
-		};
-	}
-}
-
-async function executeClickAction(action: ActionCommand): Promise<ActionExecutionResult> {
-	const { ClickExecutor } = await import('../tools/page-action/ActionExecutor');
-	const executor = new ClickExecutor();
-	return executor.execute(action);
-}
-
-async function executeInputAction(action: ActionCommand): Promise<ActionExecutionResult> {
-	const { InputExecutor } = await import('../tools/page-action/ActionExecutor');
-	const executor = new InputExecutor();
-	return executor.execute(action);
-}
-
-async function executeScrollAction(action: ActionCommand): Promise<ActionExecutionResult> {
-	const { ScrollExecutor } = await import('../tools/page-action/ActionExecutor');
-	const executor = new ScrollExecutor();
-	return executor.execute(action);
-}
-
-async function executeVerifyAction(action: ActionCommand): Promise<ActionExecutionResult> {
-	throw new Error('Verify action not yet implemented');
-}
-
-export { getPageContext, handlePageAction };
+export { getPageContext };
 

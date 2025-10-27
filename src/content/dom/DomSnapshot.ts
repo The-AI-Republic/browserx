@@ -78,13 +78,28 @@ export class DomSnapshotImpl implements DomSnapshot {
    * @returns Element or null if not found/detached
    */
   getRealElement(nodeId: string): Element | null {
+    console.log(`[DomSnapshot] Looking up element with node_id: ${nodeId}`);
+    console.log(`[DomSnapshot] Total mapped elements: ${this.forwardMap.size}`);
+
     const ref = this.forwardMap.get(nodeId);
-    if (!ref) return null;
+    if (!ref) {
+      console.error(`[DomSnapshot] ❌ node_id "${nodeId}" not found in forwardMap`);
+      console.log(`[DomSnapshot] Available node_ids:`, Array.from(this.forwardMap.keys()).slice(0, 10), '...');
+      return null;
+    }
 
     const element = ref.deref();
     if (!element) {
       // Element was garbage collected
+      console.error(`[DomSnapshot] ❌ node_id "${nodeId}" element was garbage collected (detached from DOM)`);
       return null;
+    }
+
+    if (!element.isConnected) {
+      console.warn(`[DomSnapshot] ⚠️ node_id "${nodeId}" element exists but is NOT connected to DOM`);
+      console.log(`[DomSnapshot] Element:`, element.tagName, element.className, element.id);
+    } else {
+      console.log(`[DomSnapshot] ✅ Found element:`, element.tagName, element.className || '(no class)', element.id || '(no id)');
     }
 
     return element;
@@ -109,35 +124,47 @@ export class DomSnapshotImpl implements DomSnapshot {
    * @returns true if snapshot is still valid
    */
   isValid(): boolean {
+    console.log(`[DomSnapshot] Checking snapshot validity...`);
+    console.log(`[DomSnapshot] Snapshot age: ${this.getAge()}ms`);
+    console.log(`[DomSnapshot] Total mapped elements: ${this.forwardMap.size}`);
+
     // Sampling check: verify 10 random elements still connected
     const sampleSize = Math.min(10, this.forwardMap.size);
     const entries = Array.from(this.forwardMap.entries());
 
     if (entries.length === 0) {
       // Empty snapshot is valid
+      console.log(`[DomSnapshot] ✅ Empty snapshot (valid)`);
       return true;
     }
 
     let validCount = 0;
+    let gcCount = 0;
+    let disconnectedCount = 0;
 
     for (let i = 0; i < sampleSize; i++) {
       const randomIndex = Math.floor(Math.random() * entries.length);
-      const [_, ref] = entries[randomIndex];
+      const [nodeId, ref] = entries[randomIndex];
       const element = ref.deref();
 
       if (!element) {
         // Element was garbage collected (detached)
+        console.warn(`[DomSnapshot] ⚠️ Sample element "${nodeId}" was garbage collected`);
+        gcCount++;
         return false;
       }
 
       if (!element.isConnected) {
         // Element not in DOM anymore
+        console.warn(`[DomSnapshot] ⚠️ Sample element "${nodeId}" is NOT connected:`, element.tagName);
+        disconnectedCount++;
         return false;
       }
 
       validCount++;
     }
 
+    console.log(`[DomSnapshot] ✅ Snapshot valid: ${validCount}/${sampleSize} sampled elements connected`);
     // If all sampled elements are valid, snapshot is likely valid
     return validCount === sampleSize;
   }

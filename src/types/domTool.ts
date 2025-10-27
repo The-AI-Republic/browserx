@@ -293,8 +293,12 @@ export interface TypeOptions {
   /** Typing speed (ms per character, 0 for instant) */
   speed?: number; // default: 0
 
-  /** Press Enter after typing */
-  pressEnter?: boolean; // default: false
+  /**
+   * How to finalize the input after typing
+   * - "change": Fire change event (default, appropriate for most text boxes)
+   * - "enter": Append Enter keystroke (useful for search boxes or chat inputs)
+   */
+  commit?: "change" | "enter"; // default: "change"
 
   /** Blur element after typing */
   blur?: boolean; // default: false

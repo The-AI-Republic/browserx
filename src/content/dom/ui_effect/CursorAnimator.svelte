@@ -220,7 +220,7 @@
       isAnimating: true,
       startPosition: currentPos,
       targetPosition: targetPos,
-      startTime: Date.now(),
+      startTime: performance.now(),
       duration,
       easing: 'easeInOutCubic',
     });

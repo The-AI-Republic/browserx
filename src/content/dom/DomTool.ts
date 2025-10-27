@@ -76,9 +76,6 @@ export class DomToolImpl implements DomTool {
   async buildSnapshot(
     trigger: "action" | "navigation" | "manual" | "mutation" = "manual"
   ): Promise<DomSnapshot> {
-    console.log(`[DomTool] ========== BUILD SNAPSHOT ==========`);
-    console.log(`[DomTool] Trigger: ${trigger}`);
-    console.log(`[DomTool] Current snapshot age: ${this._domSnapshot ? this._domSnapshot.getAge() : 'N/A'}ms`);
 
     // Prevent concurrent rebuilds
     if (this.isRebuilding) {
@@ -87,7 +84,6 @@ export class DomToolImpl implements DomTool {
       while (this.isRebuilding) {
         await new Promise((resolve) => setTimeout(resolve, 100));
       }
-      console.log("[DomTool] Rebuild completed by another process");
       return this._domSnapshot!;
     }
 
@@ -95,12 +91,10 @@ export class DomToolImpl implements DomTool {
 
     try {
       const startTime = Date.now();
-      console.log(`[DomTool] Starting snapshot build...`);
 
       // Collect mutations for incremental update (if enabled and mutations exist)
       let dirtyElements: Set<Element> | undefined;
       if (this.useIncrementalUpdates && this.mutationTracker.hasMutations()) {
-        console.log(`[DomTool] Using incremental update mode...`);
         const mutationInfo = this.mutationTracker.collectMutations();
 
         // Build set of all affected elements
@@ -114,21 +108,17 @@ export class DomToolImpl implements DomTool {
         //   `[DomTool] Incremental update: ${dirtyElements.size} dirty elements (${mutationInfo.mutationCount} mutations)`
         // );
       } else {
-        console.log(`[DomTool] Full tree rebuild (no mutations tracked or incremental disabled)`);
       }
 
       // Build virtual tree (with incremental support)
-      console.log(`[DomTool] Building virtual DOM tree...`);
       const virtualDom = await this.treeBuilder.buildTree(
         document.body,
         this._domSnapshot || undefined,
         dirtyElements
       );
-      console.log(`[DomTool] Virtual DOM tree built`);
 
       // Capture page context
       const context = capturePageContext();
-      console.log(`[DomTool] Page context:`, context.url);
 
       // Get statistics
       const builderStats = this.treeBuilder.getStats();
@@ -137,12 +127,6 @@ export class DomToolImpl implements DomTool {
         captureTimeMs: Date.now() - startTime,
       };
 
-      console.log(`[DomTool] Tree stats:`, {
-        totalNodes: stats.totalNodes,
-        visibleNodes: stats.visibleNodes,
-        interactiveNodes: stats.interactiveNodes,
-        captureTime: stats.captureTimeMs + 'ms'
-      });
 
       // Create new snapshot
       const snapshot = new DomSnapshotImpl(
@@ -151,21 +135,15 @@ export class DomToolImpl implements DomTool {
         context,
         stats
       );
-      console.log(`[DomTool] Snapshot object created with ${this.treeBuilder.getMappings().size} element mappings`);
 
       // Replace old snapshot
       this._domSnapshot = snapshot;
-      console.log(`[DomTool] Old snapshot replaced`);
 
       // Start tracking mutations for next rebuild (if enabled)
       if (this.useIncrementalUpdates && !this.mutationTracker.hasMutations()) {
         this.mutationTracker.startTracking(document.body);
-        console.log(`[DomTool] Started tracking mutations for next rebuild`);
       }
 
-      console.log(
-        `[DomTool] ✅ Snapshot built successfully (trigger: ${trigger}, time: ${stats.captureTimeMs}ms, nodes: ${stats.totalNodes})`
-      );
 
       return snapshot;
     } finally {
@@ -179,23 +157,18 @@ export class DomToolImpl implements DomTool {
    * @returns Promise resolving to snapshot
    */
   async getSnapshot(): Promise<DomSnapshot> {
-    console.log("[DomTool] getSnapshot() called");
 
     // Build if no snapshot exists
     if (!this._domSnapshot) {
-      console.log("[DomTool] No snapshot exists, building new one...");
       return this.buildSnapshot("manual");
     }
 
-    console.log(`[DomTool] Snapshot exists (age: ${this._domSnapshot.getAge()}ms), checking validity...`);
 
     // Rebuild if snapshot is stale/invalid
     if (!this._domSnapshot.isValid()) {
-      console.log("[DomTool] ⚠️ Snapshot is invalid, rebuilding...");
       return this.buildSnapshot("manual");
     }
 
-    console.log("[DomTool] ✅ Using existing valid snapshot");
     return this._domSnapshot;
   }
 
@@ -253,10 +226,6 @@ export class DomToolImpl implements DomTool {
     text: string,
     options?: TypeOptions
   ): Promise<ActionResult> {
-    console.log(`[DomTool] ========== TYPE ACTION REQUEST ==========`);
-    console.log(`[DomTool] node_id: ${nodeId}`);
-    console.log(`[DomTool] text: "${text}"`);
-    console.log(`[DomTool] options:`, options);
 
     const snapshot = await this.getSnapshot();
     const element = snapshot.getRealElement(nodeId);
@@ -274,13 +243,10 @@ export class DomToolImpl implements DomTool {
       throw new Error(error);
     }
 
-    console.log(`[DomTool] ✅ Element found and connected`);
 
     // Execute type
     const result = await executeType(element, nodeId, text, options);
 
-    console.log(`[DomTool] Type action result:`, result.success ? '✅ SUCCESS' : '❌ FAILED');
-    console.log(`[DomTool] Triggering async snapshot rebuild...`);
 
     // Trigger async rebuild (don't wait)
     this.buildSnapshot("action").catch((error) => {
@@ -359,7 +325,6 @@ export class DomToolImpl implements DomTool {
     // Clear snapshot
     this._domSnapshot = null;
 
-    console.log("[DomTool] Destroyed");
   }
 
   /**
@@ -416,8 +381,5 @@ export class DomToolImpl implements DomTool {
       characterDataOldValue: false,
     });
 
-    console.log(
-      `[DomTool] MutationObserver started (throttle: ${this.config.mutationThrottle}ms)`
-    );
   }
 }

@@ -37,11 +37,6 @@ export async function executeType(
 ): Promise<ActionResult> {
   const startTime = Date.now();
 
-  console.log(`[InputExecutor] ========== START TYPE ACTION ==========`);
-  console.log(`[InputExecutor] node_id: ${nodeId}`);
-  console.log(`[InputExecutor] Text to type: "${text}"`);
-  console.log(`[InputExecutor] Element:`, element.tagName, element.className || '(no class)', element.id || '(no id)');
-  console.log(`[InputExecutor] Options:`, options);
 
   // Default options
   const opts = {
@@ -58,59 +53,45 @@ export async function executeType(
       console.error(`[InputExecutor] ❌ ${error}`);
       throw new Error(error);
     }
-    console.log(`[InputExecutor] ✅ Element is typeable`);
 
     // Check React state before typing
     const reactTracker = (element as any)._valueTracker;
     if (reactTracker) {
-      console.log(`[InputExecutor] 🔍 React _valueTracker detected:`, reactTracker.value);
     } else {
-      console.log(`[InputExecutor] 🔍 No React _valueTracker found (not a React component)`);
     }
 
     // Step 1: Focus element
-    console.log(`[InputExecutor] Step 1: Focusing element...`);
     (element as HTMLElement).focus();
     await new Promise((resolve) => setTimeout(resolve, 50));
-    console.log(`[InputExecutor] Element focused, activeElement:`, document.activeElement === element ? 'YES' : 'NO');
 
     // Step 2: Capture initial value
     const initialValue = getElementValue(element);
-    console.log(`[InputExecutor] Step 2: Initial value: "${initialValue}"`);
 
     // Step 3: Clear existing value if configured
     if (opts.clearFirst) {
-      console.log(`[InputExecutor] Step 3: Clearing existing value...`);
       resetReactValueTracker(element);
       setElementValue(element, "");
       dispatchInputEvent(element); // Only input event, not change
-      console.log(`[InputExecutor] Value cleared`);
     }
 
     // Step 4: Type text (framework-aware)
     // Detect which framework/editor we're dealing with
     const framework = detectFramework(element);
-    console.log(`[InputExecutor] 🧠 Framework detected: ${framework}`);
 
     if (opts.speed > 0) {
-      console.log(`[InputExecutor] Step 4: Character-by-character typing (speed: ${opts.speed}ms)...`);
       // Character-by-character with delay (realistic typing)
       for (let i = 0; i < text.length; i++) {
         const char = text[i];
-        console.log(`[InputExecutor] Typing char ${i + 1}/${text.length}: "${char}"`);
 
         resetReactValueTracker(element);
         typeCharByFramework(element, char, framework);
 
         await new Promise((resolve) => setTimeout(resolve, opts.speed));
       }
-      console.log(`[InputExecutor] Finished character-by-character typing`);
     } else {
-      console.log(`[InputExecutor] Step 4: Instant typing (speed: 0)...`);
 
       // For rich text editors, always type character-by-character with small delays
       if (framework === 'draft' || framework === 'quill' || framework === 'contenteditable') {
-        console.log(`[InputExecutor] Rich text editor detected - typing character by character for compatibility`);
         for (let i = 0; i < text.length; i++) {
           const char = text[i];
           resetReactValueTracker(element);
@@ -121,7 +102,6 @@ export async function executeType(
         }
       } else {
         // Native input/textarea - can set all at once
-        console.log(`[InputExecutor] Native input detected - instant typing`);
         resetReactValueTracker(element);
         const currentValue = opts.clearFirst ? "" : getElementValue(element);
         dispatchKeyEvent(element, 'keydown', text[0] || '');
@@ -129,24 +109,20 @@ export async function executeType(
         dispatchInputEvent(element, text);
         dispatchKeyEvent(element, 'keyup', text[text.length - 1] || '');
       }
-      console.log(`[InputExecutor] Instant typing complete`);
     }
 
     // Step 5: Handle commit mode
     if (opts.commit === "enter") {
-      console.log(`[InputExecutor] Step 5: Committing with Enter key...`);
       dispatchKeyEvent(element, 'keydown', 'Enter');
       dispatchKeyEvent(element, 'keypress', 'Enter');
       dispatchKeyEvent(element, 'keyup', 'Enter');
 
       // Dispatch change event after Enter
       dispatchChangeEvent(element);
-      console.log(`[InputExecutor] Enter key pressed and change event dispatched`);
     }
 
     // Step 6: Blur if configured
     if (opts.blur) {
-      console.log(`[InputExecutor] Step 6: Blurring element...`);
       (element as HTMLElement).blur();
 
       // Dispatch change event on blur if not already dispatched by Enter
@@ -155,25 +131,19 @@ export async function executeType(
       }
     } else if (opts.commit !== "enter") {
       // If no blur and no enter, still dispatch change for compatibility
-      console.log(`[InputExecutor] Step 6: Dispatching change event for commit...`);
       dispatchChangeEvent(element);
     }
 
     // Step 7: Detect changes
     const finalValue = getElementValue(element);
     const valueChanged = finalValue !== initialValue;
-    console.log(`[InputExecutor] Step 7: Final value: "${finalValue}"`);
-    console.log(`[InputExecutor] Value changed: ${valueChanged ? 'YES' : 'NO'} (from "${initialValue}" to "${finalValue}")`);
 
     // Check React tracker after typing
     const reactTrackerAfter = (element as any)._valueTracker;
     if (reactTrackerAfter) {
-      console.log(`[InputExecutor] 🔍 React _valueTracker after typing:`, reactTrackerAfter.value);
-      console.log(`[InputExecutor] React would detect change:`, reactTrackerAfter.value !== finalValue ? 'YES ✅' : 'NO ❌');
     }
 
     // Setup mutation observer for DOM changes
-    console.log(`[InputExecutor] Observing DOM mutations for 100ms...`);
     let mutationCount = 0;
     const observer = new MutationObserver((mutations) => {
       mutationCount += mutations.length;
@@ -187,7 +157,6 @@ export async function executeType(
 
     await new Promise((resolve) => setTimeout(resolve, 100));
     observer.disconnect();
-    console.log(`[InputExecutor] Detected ${mutationCount} DOM mutations`);
 
     const changes = {
       navigationOccurred: false, // Typing doesn't typically cause navigation
@@ -197,9 +166,6 @@ export async function executeType(
       newValue: valueChanged ? finalValue : undefined,
     };
 
-    console.log(`[InputExecutor] ========== TYPE ACTION SUCCESS ==========`);
-    console.log(`[InputExecutor] Duration: ${Date.now() - startTime}ms`);
-    console.log(`[InputExecutor] Changes:`, changes);
 
     return {
       success: true,
@@ -309,7 +275,6 @@ function resetReactValueTracker(element: Element): void {
     if (tracker) {
       const oldValue = tracker.value;
       tracker.setValue("");
-      console.log(`[InputExecutor] 🔧 Reset React _valueTracker: "${oldValue}" → ""`);
     }
   } catch (error) {
     console.warn(`[InputExecutor] ⚠️ Failed to reset React _valueTracker:`, error);
@@ -329,31 +294,26 @@ function detectFramework(element: Element): string {
   // Draft.js (X.com, Meta apps, Substack)
   // Look for "DraftEditor" in class names
   if (className.includes('DraftEditor') || parentClassName.includes('DraftEditor')) {
-    console.log(`[InputExecutor] 🔍 Draft.js detected (class: ${className})`);
     return 'draft';
   }
 
   // Quill (Notion-like editors, HubSpot)
   // Look for "ql-editor" in class names
   if (className.includes('ql-editor') || className.includes('quill')) {
-    console.log(`[InputExecutor] 🔍 Quill detected (class: ${className})`);
     return 'quill';
   }
 
   // ProseMirror (newer rich text editors)
   if (className.includes('ProseMirror')) {
-    console.log(`[InputExecutor] 🔍 ProseMirror detected (class: ${className})`);
     return 'contenteditable'; // Use contenteditable strategy for now
   }
 
   // Generic contenteditable
   if (element.getAttribute('contenteditable') === 'true' || element.getAttribute('contenteditable') === '') {
-    console.log(`[InputExecutor] 🔍 Generic contenteditable detected`);
     return 'contenteditable';
   }
 
   // Native input/textarea
-  console.log(`[InputExecutor] 🔍 Native input detected`);
   return 'native';
 }
 
@@ -416,7 +376,6 @@ function simulateDraftJsInput(element: Element, char: string): void {
   // 6. keyup
   dispatchKeyEvent(element, 'keyup', char);
 
-  console.log(`[InputExecutor] 📝 Draft.js: typed "${char}"`);
 }
 
 /**
@@ -447,7 +406,6 @@ function simulateQuillInput(element: Element, char: string): void {
   // 5. keyup
   dispatchKeyEvent(element, 'keyup', char);
 
-  console.log(`[InputExecutor] 📝 Quill: typed "${char}"`);
 }
 
 /**
@@ -488,7 +446,6 @@ function simulateContentEditableInput(element: Element, char: string): void {
   // 6. keyup
   dispatchKeyEvent(element, 'keyup', char);
 
-  console.log(`[InputExecutor] 📝 ContentEditable: typed "${char}"`);
 }
 
 /**
@@ -516,7 +473,6 @@ function simulateNativeInput(element: Element, char: string): void {
   // 4. keyup
   dispatchKeyEvent(element, 'keyup', char);
 
-  console.log(`[InputExecutor] 📝 Native: typed "${char}"`);
 }
 
 /**
@@ -572,7 +528,6 @@ function dispatchInputEvent(element: Element, char?: string): void {
   });
 
   const dispatched = element.dispatchEvent(inputEvent);
-  console.log(`[InputExecutor] 📡 InputEvent dispatched (inputType: insertText, data: ${char}, prevented: ${!dispatched})`);
 }
 
 /**
@@ -586,7 +541,6 @@ function dispatchChangeEvent(element: Element): void {
   });
 
   const dispatched = element.dispatchEvent(changeEvent);
-  console.log(`[InputExecutor] 📡 Change event dispatched (prevented: ${!dispatched})`);
 }
 
 /**
@@ -595,7 +549,6 @@ function dispatchChangeEvent(element: Element): void {
  * @deprecated Use dispatchInputEvent() and dispatchChangeEvent() separately
  */
 function dispatchInputEvents(element: Element): void {
-  console.log(`[InputExecutor] 📡 Dispatching events (legacy)...`);
   dispatchInputEvent(element);
   dispatchChangeEvent(element);
 }

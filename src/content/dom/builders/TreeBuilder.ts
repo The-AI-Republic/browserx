@@ -757,15 +757,21 @@ export class TreeBuilder {
   /**
    * Extract element map from old snapshot
    *
+   * Only includes elements that are still connected to the DOM,
+   * as disconnected elements cannot be reliably matched.
+   *
    * @param snapshot - Snapshot to extract from
-   * @returns Map of node_id to Element
+   * @returns Map of node_id to Element (only connected elements)
    */
   private extractElementMap(snapshot: DomSnapshot): Map<string, Element> {
     const map = new Map<string, Element>();
 
     const traverse = (node: VirtualNode) => {
       const element = snapshot.getRealElement(node.node_id);
-      if (element) {
+
+      // Only include elements that are still connected to the DOM
+      // Skip disconnected elements as they can't be used for matching
+      if (element && element.isConnected) {
         map.set(node.node_id, element);
       }
 

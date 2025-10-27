@@ -787,7 +787,9 @@ class WaterRipple {
     }
 }
 
-// Export for use
+// Export for use (both CommonJS and ES modules)
 if (typeof module !== 'undefined' && module.exports) {
     module.exports = WaterRipple;
 }
+
+export default WaterRipple;

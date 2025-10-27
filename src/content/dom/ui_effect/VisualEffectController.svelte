@@ -46,6 +46,7 @@
 
   // Component refs
   let cursorAnimatorRef: any = null;
+  let mountComplete = false;
 
   // Water ripple effect instance
   let waterRipple: any = null;
@@ -64,6 +65,8 @@
 
   onMount(async () => {
     try {
+      console.log('[VisualEffectController] Mounting...');
+
       // Sync stores
       storeCleanup = syncVisualEffectState();
 
@@ -77,6 +80,9 @@
 
       // Add viewport resize handler (T039)
       window.addEventListener('resize', handleViewportResize);
+
+      mountComplete = true;
+      console.log('[VisualEffectController] Mount complete, cursorAnimatorRef:', !!cursorAnimatorRef);
     } catch (error) {
       handleError('Initialization error', error);
     }
@@ -119,7 +125,8 @@
   async function initializeWaterRipple() {
     try {
       // Dynamically import water ripple effect
-      const { default: WaterRipple } = await import('./water_ripple_effect.js');
+      const WaterRippleModule = await import('./water_ripple_effect.js');
+      const WaterRipple = WaterRippleModule.default;
 
       waterRipple = new WaterRipple({
         resolution: config.rippleConfig?.resolution ?? 256,
@@ -288,6 +295,8 @@
    * Enqueues event and triggers cursor animation.
    */
   function handleAgentAction(event: AgentActionEvent) {
+    console.log('[VisualEffectController] handleAgentAction called:', event.action);
+
     // Calculate viewport coordinates
     let x: number;
     let y: number;
@@ -300,10 +309,12 @@
       }
       x = coords.x;
       y = coords.y;
+      console.log('[VisualEffectController] Element coordinates:', x, y);
     } else if (event.boundingBox) {
       const coords = getViewportCoordinatesFromRect(event.boundingBox);
       x = coords.x;
       y = coords.y;
+      console.log('[VisualEffectController] BoundingBox coordinates:', x, y);
     } else {
       console.warn('[VisualEffectController] No element or bounding box provided');
       return;
@@ -322,12 +333,19 @@
     if (cursorAnimatorRef && config.enableCursorAnimation) {
       const status = queue.getStatus();
 
+      console.log('[VisualEffectController] Triggering animation to:', x, y, 'cursorAnimatorRef exists:', !!cursorAnimatorRef);
+
       // Skip animation if queue is very deep (>10 events)
       if (status.size > 10) {
         cursorAnimatorRef.skipTo(x, y);
       } else {
         cursorAnimatorRef.animateTo(x, y);
       }
+    } else {
+      console.warn('[VisualEffectController] Cannot animate:', {
+        cursorAnimatorRef: !!cursorAnimatorRef,
+        enableCursorAnimation: config.enableCursorAnimation
+      });
     }
   }
 

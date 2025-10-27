@@ -54,6 +54,11 @@
     // Subscribe to animation state to trigger animations
     unsubscribers.push(
       animationState.subscribe(state => {
+        console.log('[CursorAnimator] animationState changed:', {
+          storeIsAnimating: state.isAnimating,
+          localIsAnimating: isAnimating,
+          willTrigger: state.isAnimating && !isAnimating
+        });
         if (state.isAnimating && !isAnimating) {
           startAnimation();
         }
@@ -78,16 +83,26 @@
    * Applies easing function to create natural motion.
    */
   function startAnimation() {
+    console.log('[CursorAnimator] startAnimation called');
+
     let state: any;
     const unsubscribe = animationState.subscribe(s => {
       state = s;
     });
     unsubscribe();
 
+    console.log('[CursorAnimator] Animation state:', state);
+
     if (!state.startPosition || !state.targetPosition || !state.startTime) {
+      console.warn('[CursorAnimator] Missing required state:', {
+        hasStartPosition: !!state.startPosition,
+        hasTargetPosition: !!state.targetPosition,
+        hasStartTime: !!state.startTime
+      });
       return;
     }
 
+    console.log('[CursorAnimator] Starting animation from', state.startPosition, 'to', state.targetPosition);
     isAnimating = true;
 
     const animate = (currentTime: number) => {
@@ -167,11 +182,14 @@
    * @param targetY - Target Y coordinate
    */
   export function animateTo(targetX: number, targetY: number): void {
+    console.log('[CursorAnimator] animateTo called:', targetX, targetY, 'from:', x, y);
+
     const currentPos: CursorPosition = { x, y, timestamp: Date.now() };
     const targetPos: CursorPosition = { x: targetX, y: targetY, timestamp: Date.now() };
 
     // Calculate distance
     const distance = calculateDistance(currentPos, targetPos);
+    console.log('[CursorAnimator] Distance:', distance);
 
     // Base duration: 300ms for short distances, up to 1500ms for long distances
     const MIN_DURATION = 300;
@@ -190,6 +208,12 @@
 
     const processingRate = queue?.getProcessingRate() ?? 1.0;
     const duration = baseDuration / processingRate;
+
+    console.log('[CursorAnimator] Setting animation state:', {
+      startPosition: currentPos,
+      targetPosition: targetPos,
+      duration
+    });
 
     // Update animation state
     animationState.set({

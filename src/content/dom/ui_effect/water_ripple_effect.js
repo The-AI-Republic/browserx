@@ -14,7 +14,7 @@ class WaterRipple {
         this.options = {
             resolution: options.resolution || 256,
             dropRadius: options.dropRadius || 20,
-            perturbance: options.perturbance || 0.03,
+            perturbance: options.perturbance || 0.045, // Increased 50% for wider spread
             imageUrl: options.imageUrl || null,
             ...options
         };
@@ -346,8 +346,20 @@ class WaterRipple {
                 vec3 dx = vec3(delta.x, heightX - height, 0.0);
                 vec3 dy = vec3(0.0, heightY - height, delta.y);
                 vec2 offset = -normalize(cross(dy, dx)).xz;
-                float specular = pow(max(0.0, dot(offset, normalize(vec2(-0.6, 1.0)))), 4.0);
-                gl_FragColor = texture2D(samplerBackground, backgroundCoord + offset * perturbance) + specular;
+
+                // Enhanced specular for bright white glowing effect (like sunshine on water)
+                float specular = pow(max(0.0, dot(offset, normalize(vec2(-0.6, 1.0)))), 8.0);
+
+                // Get background color with distortion
+                vec4 bgColor = texture2D(samplerBackground, backgroundCoord + offset * perturbance);
+
+                // Add shadow (darken areas where water dips)
+                float shadow = smoothstep(-0.02, 0.02, height) * 0.15;
+                bgColor.rgb *= (1.0 - shadow);
+
+                // Add bright white glow to specular highlights (2.5x brighter)
+                vec3 sunlight = vec3(1.0, 1.0, 0.98); // Slightly warm white for sunshine
+                gl_FragColor = bgColor + vec4(sunlight * specular * 2.5, specular);
             }
         `);
         gl.uniform2fv(this.renderProgram.locations.delta, this.textureDelta);

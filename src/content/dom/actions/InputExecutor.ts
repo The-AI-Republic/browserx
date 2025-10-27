@@ -83,11 +83,15 @@ export async function executeType(
       console.log(`[InputExecutor] Step 3: Clearing existing value...`);
       resetReactValueTracker(element);
       setElementValue(element, "");
-      dispatchInputEvents(element);
+      dispatchInputEvent(element); // Only input event, not change
       console.log(`[InputExecutor] Value cleared`);
     }
 
-    // Step 4: Type text
+    // Step 4: Type text (framework-aware)
+    // Detect which framework/editor we're dealing with
+    const framework = detectFramework(element);
+    console.log(`[InputExecutor] 🧠 Framework detected: ${framework}`);
+
     if (opts.speed > 0) {
       console.log(`[InputExecutor] Step 4: Character-by-character typing (speed: ${opts.speed}ms)...`);
       // Character-by-character with delay (realistic typing)
@@ -95,63 +99,64 @@ export async function executeType(
         const char = text[i];
         console.log(`[InputExecutor] Typing char ${i + 1}/${text.length}: "${char}"`);
 
-        // Reset React tracker BEFORE changing value
         resetReactValueTracker(element);
-
-        const currentValue = getElementValue(element);
-        setElementValue(element, currentValue + char);
-
-        // Dispatch keyboard events for realistic typing
-        dispatchKeyboardEvents(element, char);
-
-        // Dispatch input events
-        dispatchInputEvents(element);
+        typeCharByFramework(element, char, framework);
 
         await new Promise((resolve) => setTimeout(resolve, opts.speed));
       }
       console.log(`[InputExecutor] Finished character-by-character typing`);
     } else {
       console.log(`[InputExecutor] Step 4: Instant typing (speed: 0)...`);
-      // Instant typing
-      resetReactValueTracker(element);
-      const currentValue = opts.clearFirst ? "" : getElementValue(element);
-      setElementValue(element, currentValue + text);
-      dispatchInputEvents(element);
+
+      // For rich text editors, always type character-by-character with small delays
+      if (framework === 'draft' || framework === 'quill' || framework === 'contenteditable') {
+        console.log(`[InputExecutor] Rich text editor detected - typing character by character for compatibility`);
+        for (let i = 0; i < text.length; i++) {
+          const char = text[i];
+          resetReactValueTracker(element);
+          typeCharByFramework(element, char, framework);
+
+          // Small delay for realism and event processing
+          await new Promise((resolve) => setTimeout(resolve, 20));
+        }
+      } else {
+        // Native input/textarea - can set all at once
+        console.log(`[InputExecutor] Native input detected - instant typing`);
+        resetReactValueTracker(element);
+        const currentValue = opts.clearFirst ? "" : getElementValue(element);
+        dispatchKeyEvent(element, 'keydown', text[0] || '');
+        setElementValue(element, currentValue + text);
+        dispatchInputEvent(element, text);
+        dispatchKeyEvent(element, 'keyup', text[text.length - 1] || '');
+      }
       console.log(`[InputExecutor] Instant typing complete`);
     }
 
     // Step 5: Handle commit mode
     if (opts.commit === "enter") {
       console.log(`[InputExecutor] Step 5: Committing with Enter key...`);
-      const enterEvent = new KeyboardEvent("keydown", {
-        key: "Enter",
-        code: "Enter",
-        keyCode: 13,
-        which: 13,
-        bubbles: true,
-        cancelable: true,
-      });
-      element.dispatchEvent(enterEvent);
+      dispatchKeyEvent(element, 'keydown', 'Enter');
+      dispatchKeyEvent(element, 'keypress', 'Enter');
+      dispatchKeyEvent(element, 'keyup', 'Enter');
 
-      const enterUpEvent = new KeyboardEvent("keyup", {
-        key: "Enter",
-        code: "Enter",
-        keyCode: 13,
-        which: 13,
-        bubbles: true,
-        cancelable: true,
-      });
-      element.dispatchEvent(enterUpEvent);
-      console.log(`[InputExecutor] Enter key pressed`);
-    } else {
-      console.log(`[InputExecutor] Step 5: Committing with change event (default)...`);
-      // Change event is already dispatched in dispatchInputEvents()
+      // Dispatch change event after Enter
+      dispatchChangeEvent(element);
+      console.log(`[InputExecutor] Enter key pressed and change event dispatched`);
     }
 
     // Step 6: Blur if configured
     if (opts.blur) {
       console.log(`[InputExecutor] Step 6: Blurring element...`);
       (element as HTMLElement).blur();
+
+      // Dispatch change event on blur if not already dispatched by Enter
+      if (opts.commit !== "enter") {
+        dispatchChangeEvent(element);
+      }
+    } else if (opts.commit !== "enter") {
+      // If no blur and no enter, still dispatch change for compatibility
+      console.log(`[InputExecutor] Step 6: Dispatching change event for commit...`);
+      dispatchChangeEvent(element);
     }
 
     // Step 7: Detect changes
@@ -312,63 +317,285 @@ function resetReactValueTracker(element: Element): void {
 }
 
 /**
- * Dispatch keyboard events for a character
- * Makes typing more realistic for framework event handlers
+ * Detect which framework/editor type the element is using
+ * This determines which event sequence to use for typing
+ *
+ * @returns 'draft' | 'quill' | 'contenteditable' | 'native'
  */
-function dispatchKeyboardEvents(element: Element, char: string): void {
-  // keydown event
-  const keydownEvent = new KeyboardEvent("keydown", {
-    key: char,
-    code: `Key${char.toUpperCase()}`,
-    bubbles: true,
-    cancelable: true,
-  });
-  element.dispatchEvent(keydownEvent);
+function detectFramework(element: Element): string {
+  const className = element.className || '';
+  const parentClassName = element.parentElement?.className || '';
 
-  // keypress event (deprecated but some frameworks still use it)
-  const keypressEvent = new KeyboardEvent("keypress", {
-    key: char,
-    code: `Key${char.toUpperCase()}`,
-    bubbles: true,
-    cancelable: true,
-  });
-  element.dispatchEvent(keypressEvent);
+  // Draft.js (X.com, Meta apps, Substack)
+  // Look for "DraftEditor" in class names
+  if (className.includes('DraftEditor') || parentClassName.includes('DraftEditor')) {
+    console.log(`[InputExecutor] 🔍 Draft.js detected (class: ${className})`);
+    return 'draft';
+  }
 
-  // keyup event
-  const keyupEvent = new KeyboardEvent("keyup", {
-    key: char,
-    code: `Key${char.toUpperCase()}`,
-    bubbles: true,
-    cancelable: true,
-  });
-  element.dispatchEvent(keyupEvent);
+  // Quill (Notion-like editors, HubSpot)
+  // Look for "ql-editor" in class names
+  if (className.includes('ql-editor') || className.includes('quill')) {
+    console.log(`[InputExecutor] 🔍 Quill detected (class: ${className})`);
+    return 'quill';
+  }
+
+  // ProseMirror (newer rich text editors)
+  if (className.includes('ProseMirror')) {
+    console.log(`[InputExecutor] 🔍 ProseMirror detected (class: ${className})`);
+    return 'contenteditable'; // Use contenteditable strategy for now
+  }
+
+  // Generic contenteditable
+  if (element.getAttribute('contenteditable') === 'true' || element.getAttribute('contenteditable') === '') {
+    console.log(`[InputExecutor] 🔍 Generic contenteditable detected`);
+    return 'contenteditable';
+  }
+
+  // Native input/textarea
+  console.log(`[InputExecutor] 🔍 Native input detected`);
+  return 'native';
 }
 
 /**
- * Dispatch input events for framework compatibility
- *
- * Dispatches both 'input' and 'change' events to trigger
- * React, Vue, Angular, and other framework listeners.
+ * Framework-aware character typing dispatcher
+ * Routes to the appropriate typing function based on framework
  */
-function dispatchInputEvents(element: Element): void {
-  console.log(`[InputExecutor] 📡 Dispatching events...`);
+function typeCharByFramework(element: Element, char: string, framework: string): void {
+  switch (framework) {
+    case 'draft':
+      simulateDraftJsInput(element, char);
+      break;
+    case 'quill':
+      simulateQuillInput(element, char);
+      break;
+    case 'contenteditable':
+      simulateContentEditableInput(element, char);
+      break;
+    case 'native':
+    default:
+      simulateNativeInput(element, char);
+      break;
+  }
+}
 
-  // Input event (for real-time updates)
-  // Use InputEvent instead of Event for better framework compatibility
-  const inputEvent = new InputEvent("input", {
+/**
+ * Draft.js typing simulation (X.com, Meta apps)
+ * Event sequence: keydown → keypress → beforeinput → textInput → modify DOM → keyup
+ */
+function simulateDraftJsInput(element: Element, char: string): void {
+  // 1. keydown
+  dispatchKeyEvent(element, 'keydown', char);
+
+  // 2. keypress (deprecated but some frameworks still use it)
+  dispatchKeyEvent(element, 'keypress', char);
+
+  // 3. beforeinput (signals intent to modify)
+  const beforeEvt = new InputEvent('beforeinput', {
     bubbles: true,
     cancelable: true,
     composed: true,
-    inputType: "insertText", // Tells frameworks this was typing
+    inputType: 'insertText',
+    data: char,
   });
-  const inputDispatched = element.dispatchEvent(inputEvent);
-  console.log(`[InputExecutor] 📡 InputEvent dispatched (type: InputEvent, inputType: insertText, prevented: ${!inputDispatched})`);
+  element.dispatchEvent(beforeEvt);
 
-  // Change event (for frameworks)
+  // 4. textInput (CRITICAL - Draft.js listens for this!)
+  const textEvt = new InputEvent('textInput', {
+    bubbles: true,
+    cancelable: true,
+    composed: true,
+    data: char,
+  });
+  element.dispatchEvent(textEvt);
+
+  // 5. Modify DOM
+  const currentValue = getElementValue(element);
+  setElementValue(element, currentValue + char);
+
+  // 6. keyup
+  dispatchKeyEvent(element, 'keyup', char);
+
+  console.log(`[InputExecutor] 📝 Draft.js: typed "${char}"`);
+}
+
+/**
+ * Quill typing simulation (Notion-like editors)
+ * Event sequence: keydown → keypress → modify DOM → input → keyup
+ */
+function simulateQuillInput(element: Element, char: string): void {
+  // 1. keydown
+  dispatchKeyEvent(element, 'keydown', char);
+
+  // 2. keypress
+  dispatchKeyEvent(element, 'keypress', char);
+
+  // 3. Modify DOM
+  const currentValue = getElementValue(element);
+  setElementValue(element, currentValue + char);
+
+  // 4. input event (Quill listens to standard input)
+  const inputEvt = new InputEvent('input', {
+    bubbles: true,
+    cancelable: false,
+    composed: true,
+    inputType: 'insertText',
+    data: char,
+  });
+  element.dispatchEvent(inputEvt);
+
+  // 5. keyup
+  dispatchKeyEvent(element, 'keyup', char);
+
+  console.log(`[InputExecutor] 📝 Quill: typed "${char}"`);
+}
+
+/**
+ * Generic contenteditable typing simulation
+ * Event sequence: keydown → keypress → beforeinput → modify DOM → input → keyup
+ */
+function simulateContentEditableInput(element: Element, char: string): void {
+  // 1. keydown
+  dispatchKeyEvent(element, 'keydown', char);
+
+  // 2. keypress
+  dispatchKeyEvent(element, 'keypress', char);
+
+  // 3. beforeinput
+  const beforeEvt = new InputEvent('beforeinput', {
+    bubbles: true,
+    cancelable: true,
+    composed: true,
+    inputType: 'insertText',
+    data: char,
+  });
+  element.dispatchEvent(beforeEvt);
+
+  // 4. Modify DOM
+  const currentValue = getElementValue(element);
+  setElementValue(element, currentValue + char);
+
+  // 5. input event
+  const inputEvt = new InputEvent('input', {
+    bubbles: true,
+    cancelable: false,
+    composed: true,
+    inputType: 'insertText',
+    data: char,
+  });
+  element.dispatchEvent(inputEvt);
+
+  // 6. keyup
+  dispatchKeyEvent(element, 'keyup', char);
+
+  console.log(`[InputExecutor] 📝 ContentEditable: typed "${char}"`);
+}
+
+/**
+ * Native input/textarea typing simulation
+ * Simpler event sequence for standard form elements
+ */
+function simulateNativeInput(element: Element, char: string): void {
+  // 1. keydown
+  dispatchKeyEvent(element, 'keydown', char);
+
+  // 2. Modify DOM
+  const currentValue = getElementValue(element);
+  setElementValue(element, currentValue + char);
+
+  // 3. input event
+  const inputEvt = new InputEvent('input', {
+    bubbles: true,
+    cancelable: false,
+    composed: true,
+    inputType: 'insertText',
+    data: char,
+  });
+  element.dispatchEvent(inputEvt);
+
+  // 4. keyup
+  dispatchKeyEvent(element, 'keyup', char);
+
+  console.log(`[InputExecutor] 📝 Native: typed "${char}"`);
+}
+
+/**
+ * Get the correct keyboard event code for a character
+ * Handles letters, numbers, spaces, and special characters
+ */
+function getKeyCode(char: string): string {
+  // Special keys
+  if (char === 'Enter') return 'Enter';
+  if (char === ' ') return 'Space';
+  if (char === '\t') return 'Tab';
+
+  // Numbers
+  if (/^\d$/.test(char)) return `Digit${char}`;
+
+  // Letters
+  if (/^[a-zA-Z]$/.test(char)) return `Key${char.toUpperCase()}`;
+
+  // For other characters, use generic code
+  return 'Unidentified';
+}
+
+/**
+ * Dispatch a single keyboard event (keydown, keypress, or keyup)
+ * Creates proper keyboard events that match browser behavior
+ */
+function dispatchKeyEvent(element: Element, eventType: 'keydown' | 'keypress' | 'keyup', char: string): void {
+  const code = getKeyCode(char);
+
+  const keyEvent = new KeyboardEvent(eventType, {
+    key: char,
+    code: code,
+    bubbles: true,
+    cancelable: true,
+    composed: true,
+  });
+
+  element.dispatchEvent(keyEvent);
+}
+
+/**
+ * Dispatch input event for real-time value updates
+ * Legacy function - now mainly used for clearing values
+ * For actual typing, use the framework-specific functions
+ */
+function dispatchInputEvent(element: Element, char?: string): void {
+  const inputEvent = new InputEvent("input", {
+    bubbles: true,
+    cancelable: false,
+    composed: true,
+    inputType: "insertText",
+    data: char,
+  });
+
+  const dispatched = element.dispatchEvent(inputEvent);
+  console.log(`[InputExecutor] 📡 InputEvent dispatched (inputType: insertText, data: ${char}, prevented: ${!dispatched})`);
+}
+
+/**
+ * Dispatch change event for form submission
+ * This typically fires on blur or Enter, not during typing
+ */
+function dispatchChangeEvent(element: Element): void {
   const changeEvent = new Event("change", {
     bubbles: true,
     cancelable: true,
   });
-  const changeDispatched = element.dispatchEvent(changeEvent);
-  console.log(`[InputExecutor] 📡 Change event dispatched (prevented: ${!changeDispatched})`);
+
+  const dispatched = element.dispatchEvent(changeEvent);
+  console.log(`[InputExecutor] 📡 Change event dispatched (prevented: ${!dispatched})`);
+}
+
+/**
+ * Legacy function for backwards compatibility
+ * Now just dispatches input event (change should be called separately)
+ * @deprecated Use dispatchInputEvent() and dispatchChangeEvent() separately
+ */
+function dispatchInputEvents(element: Element): void {
+  console.log(`[InputExecutor] 📡 Dispatching events (legacy)...`);
+  dispatchInputEvent(element);
+  dispatchChangeEvent(element);
 }

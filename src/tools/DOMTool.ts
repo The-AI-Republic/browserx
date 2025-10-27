@@ -92,7 +92,7 @@ export class DOMTool extends BaseTool {
       },
       text: {
         type: 'string',
-        description: 'Text to type into element (required for type action)',
+        description: 'Text to type into element (required for type action). Use options.commit to control finalization: "change" (default, fires change event) or "enter" (appends Enter keystroke for search/chat inputs).',
       },
       key: {
         type: 'string',
@@ -100,7 +100,7 @@ export class DOMTool extends BaseTool {
       },
       options: {
         type: 'object',
-        description: 'Action-specific options (SerializationOptions for snapshot, ClickOptions for click, TypeOptions for type, KeyPressOptions for keypress)',
+        description: 'Action-specific options. For type action: { clearFirst?: boolean, speed?: number, commit?: "change"|"enter", blur?: boolean }. commit controls input finalization: "change" (default, fires change event) or "enter" (appends Enter keystroke). For click: { button?: "left"|"right"|"middle", scrollIntoView?: boolean }. For keypress: { modifiers?: { ctrl?: boolean, shift?: boolean, alt?: boolean, meta?: boolean } }. For snapshot: { includeValues?: boolean, includeMetadata?: boolean }.',
       },
     },
     {

@@ -44,10 +44,10 @@ export async function executeType(
   console.log(`[InputExecutor] Options:`, options);
 
   // Default options
-  const opts: Required<TypeOptions> = {
+  const opts = {
     clearFirst: options.clearFirst ?? false,
     speed: options.speed ?? 0,
-    pressEnter: options.pressEnter ?? false,
+    commit: options.commit ?? "change",
     blur: options.blur ?? false,
   };
 
@@ -120,9 +120,9 @@ export async function executeType(
       console.log(`[InputExecutor] Instant typing complete`);
     }
 
-    // Step 5: Press Enter if configured
-    if (opts.pressEnter) {
-      console.log(`[InputExecutor] Step 5: Pressing Enter key...`);
+    // Step 5: Handle commit mode
+    if (opts.commit === "enter") {
+      console.log(`[InputExecutor] Step 5: Committing with Enter key...`);
       const enterEvent = new KeyboardEvent("keydown", {
         key: "Enter",
         code: "Enter",
@@ -143,6 +143,9 @@ export async function executeType(
       });
       element.dispatchEvent(enterUpEvent);
       console.log(`[InputExecutor] Enter key pressed`);
+    } else {
+      console.log(`[InputExecutor] Step 5: Committing with change event (default)...`);
+      // Change event is already dispatched in dispatchInputEvents()
     }
 
     // Step 6: Blur if configured

@@ -272,8 +272,8 @@
     src={POINTING_HAND_SVG}
     alt=""
     class="cursor-icon"
-    width="32"
-    height="32"
+    width="48"
+    height="48"
     draggable="false"
   />
 </div>
@@ -287,10 +287,10 @@
     z-index: 2147483647; /* Maximum z-index (above overlay) */
 
     /* Size (centered on cursor position) */
-    width: 32px;
-    height: 32px;
-    margin-left: -16px; /* Center horizontally */
-    margin-top: -16px; /* Center vertically */
+    width: 48px;
+    height: 48px;
+    margin-left: -24px; /* Center horizontally */
+    margin-top: -24px; /* Center vertically */
 
     /* Performance - GPU acceleration */
     will-change: transform;

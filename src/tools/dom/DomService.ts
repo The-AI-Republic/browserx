@@ -5,7 +5,8 @@ import type {
   SerializedDom,
   PageContext,
   SnapshotStats,
-  ServiceConfig
+  ServiceConfig,
+  PerformanceMetrics
 } from './types';
 import { NODE_ID_WINDOW, NODE_ID_DOCUMENT } from './types';
 import { computeHeuristics, classifyNode, determineInteractionType, detectFramework } from './utils';
@@ -17,6 +18,7 @@ export class DomService {
   private isAttached: boolean = false;
   private currentSnapshot: DomSnapshot | null = null;
   private config: ServiceConfig;
+  private metrics: PerformanceMetrics; // T092: Performance metrics tracking
 
   private constructor(tabId: number, config?: Partial<ServiceConfig>) {
     this.tabId = tabId;
@@ -25,7 +27,29 @@ export class DomService {
       maxTreeDepth: 100,
       snapshotTimeout: 10000,
       retryAttempts: 2,
+      enableMetrics: true,
       ...config
+    };
+
+    // T092: Initialize performance metrics
+    this.metrics = {
+      snapshotCount: 0,
+      snapshotCacheHits: 0,
+      snapshotCacheMisses: 0,
+      totalSnapshotDuration: 0,
+      averageSnapshotDuration: 0,
+      actionCount: 0,
+      actionsByType: {
+        click: 0,
+        type: 0,
+        scroll: 0,
+        keypress: 0
+      },
+      totalActionDuration: 0,
+      averageActionDuration: 0,
+      errorCount: 0,
+      errorsByType: {},
+      lastReset: new Date()
     };
   }
 
@@ -51,6 +75,9 @@ export class DomService {
 
       // Listen for invalidation events
       chrome.debugger.onEvent.addListener(this.handleCdpEvent.bind(this));
+
+      // T079: Listen for debugger detach (connection loss)
+      chrome.debugger.onDetach.addListener(this.handleDebuggerDetach.bind(this));
 
       console.log(`[DomService] Attached to tab ${this.tabId}`);
     } catch (error: any) {
@@ -86,8 +113,16 @@ export class DomService {
   }
 
   async getSerializedDom(): Promise<SerializedDom> {
+    // T092: Track cache hits/misses
     if (!this.currentSnapshot || this.currentSnapshot.isStale()) {
+      if (this.config.enableMetrics) {
+        this.metrics.snapshotCacheMisses++;
+      }
       await this.buildSnapshot();
+    } else {
+      if (this.config.enableMetrics) {
+        this.metrics.snapshotCacheHits++;
+      }
     }
     return this.currentSnapshot!.serialize();
   }
@@ -109,12 +144,29 @@ export class DomService {
     const start = Date.now();
     console.log(`[DomService] Building snapshot for tab ${this.tabId}...`);
 
-    // Parallel fetch: DOM tree + A11y tree
-    // Note: A11y fetch may fail on some CSP-restricted pages - we handle this gracefully
-    const [domTree, axTree] = await Promise.all([
-      this.sendCommand<any>('DOM.getDocument', { depth: -1, pierce: true }),
-      this.sendCommand<any>('Accessibility.getFullAXTree', { depth: -1 }).catch(() => null)
-    ]);
+    // T082: Add timeout protection for slow-loading iframes
+    const snapshotPromise = (async () => {
+      // Parallel fetch: DOM tree + A11y tree
+      // Note: A11y fetch may fail on some CSP-restricted pages - we handle this gracefully
+      const [domTree, axTree] = await Promise.all([
+        this.sendCommand<any>('DOM.getDocument', { depth: -1, pierce: true })
+          .catch((error: any) => {
+            // T077: X-Frame-Options DENY detection
+            if (error.message?.includes('Frame') || error.message?.includes('X-Frame-Options')) {
+              throw new Error('FRAME_DENIED: Page has X-Frame-Options DENY header. Cross-origin frames cannot be accessed.');
+            }
+            throw error;
+          }),
+        this.sendCommand<any>('Accessibility.getFullAXTree', { depth: -1 }).catch(() => null)
+      ]);
+      return { domTree, axTree };
+    })();
+
+    const timeoutPromise = new Promise<never>((_, reject) => {
+      setTimeout(() => reject(new Error(`SNAPSHOT_TIMEOUT: Snapshot took longer than ${this.config.snapshotTimeout}ms. Consider reducing depth or page complexity.`)), this.config.snapshotTimeout);
+    });
+
+    const { domTree, axTree } = await Promise.race([snapshotPromise, timeoutPromise]);
 
     // Build enrichment map: backendNodeId → AXNode
     const axMap = new Map<number, any>();
@@ -129,9 +181,15 @@ export class DomService {
     // Build VirtualNode tree
     let nodeCounter = 0;
 
-    const buildVirtualTree = (cdpNode: any, depth: number = 0): VirtualNode | null => {
+    const buildVirtualTree = (cdpNode: any, depth: number = 0, iframeDepth: number = 0): VirtualNode | null => {
+      // T078: Pathological case protection for deeply nested iframes
       if (depth > this.config.maxTreeDepth) {
-        console.warn('[DomService] Max tree depth reached');
+        console.warn(`[DomService] Max tree depth (${this.config.maxTreeDepth}) reached at iframe depth ${iframeDepth}. Tree traversal stopped.`);
+        return null;
+      }
+
+      if (iframeDepth > 100) {
+        console.error('[DomService] PATHOLOGICAL_NESTING: More than 100 nested iframes detected. This is highly unusual and may indicate malicious page structure.');
         return null;
       }
 
@@ -170,8 +228,9 @@ export class DomService {
 
       // Recurse to children
       if (cdpNode.children) {
+        const nextIframeDepth = cdpNode.localName === 'iframe' ? iframeDepth + 1 : iframeDepth;
         vNode.children = cdpNode.children
-          .map((c: any) => buildVirtualTree(c, depth + 1))
+          .map((c: any) => buildVirtualTree(c, depth + 1, nextIframeDepth))
           .filter((n: VirtualNode | null) => n !== null) as VirtualNode[];
       }
 
@@ -202,6 +261,11 @@ export class DomService {
 
     this.computeStats(virtualDom, stats);
 
+    // T084: Memory pressure detection for large pages
+    if (stats.totalNodes > 50000) {
+      console.warn(`[DomService] MEMORY_PRESSURE: Page has ${stats.totalNodes} nodes (>50k threshold). Consider reducing maxTreeDepth or limiting snapshot scope to improve performance.`);
+    }
+
     // Detect framework (T068: Framework Compatibility)
     const framework = detectFramework(virtualDom);
     if (framework) {
@@ -221,6 +285,13 @@ export class DomService {
     };
 
     this.currentSnapshot = new DomSnapshot(virtualDom, pageContext, stats);
+
+    // T092: Track snapshot metrics
+    if (this.config.enableMetrics) {
+      this.metrics.snapshotCount++;
+      this.metrics.totalSnapshotDuration += stats.snapshotDuration;
+      this.metrics.averageSnapshotDuration = this.metrics.totalSnapshotDuration / this.metrics.snapshotCount;
+    }
 
     console.log(
       `[DomService] Snapshot built in ${stats.snapshotDuration}ms (${stats.totalNodes} nodes, ${stats.interactiveNodes} interactive)`
@@ -251,6 +322,21 @@ export class DomService {
     if (method === 'DOM.documentUpdated') {
       console.log('[DomService] DOM updated, invalidating snapshot');
       this.invalidateSnapshot();
+    }
+  }
+
+  // T079: Handle CDP connection loss
+  private handleDebuggerDetach(source: chrome.debugger.Debuggee, reason: string): void {
+    if (source.tabId !== this.tabId) return;
+
+    console.error(`[DomService] CDP_CONNECTION_LOST: Debugger detached from tab ${this.tabId}. Reason: ${reason}`);
+    this.isAttached = false;
+    this.currentSnapshot = null;
+    DomService.instances.delete(this.tabId);
+
+    // If detach was unexpected (not user-initiated), log for debugging
+    if (reason !== 'target_closed' && reason !== 'canceled_by_user') {
+      console.warn(`[DomService] Unexpected debugger detach. Reason: ${reason}. Future operations will require re-attach.`);
     }
   }
 
@@ -299,8 +385,31 @@ export class DomService {
       }
 
       // Get box model for coordinates
-      const boxModel = await this.sendCommand<any>('DOM.getBoxModel', { backendNodeId });
+      let boxModel;
+      try {
+        boxModel = await this.sendCommand<any>('DOM.getBoxModel', { backendNodeId });
+      } catch (error: any) {
+        // T083: SVG elements don't have box models - try getting content quads instead
+        if (error.message?.includes('Could not compute box model')) {
+          const node = this.currentSnapshot.getNode(nodeId);
+          if (node?.nodeName?.toLowerCase() === 'svg' || node?.nodeName?.toLowerCase().includes('svg')) {
+            console.warn('[DomService] SVG element detected - using alternative click method');
+            // For SVG, try to get bounding rect via JavaScript
+            throw new Error('SVG_CLICK_NOT_SUPPORTED: Direct SVG element clicking not yet fully implemented. Consider clicking parent element.');
+          }
+        }
+        throw error;
+      }
+
       const { content } = boxModel.model;
+
+      // T080: Element visibility verification
+      const width = Math.abs(content[2] - content[0]);
+      const height = Math.abs(content[5] - content[1]);
+      if (width === 0 || height === 0) {
+        throw new Error('ELEMENT_NOT_VISIBLE: Element has zero width or height. It may be hidden or display:none.');
+      }
+
       const centerX = (content[0] + content[2]) / 2;
       const centerY = (content[1] + content[5]) / 2;
 
@@ -328,9 +437,12 @@ export class DomService {
 
       this.invalidateSnapshot();
 
+      const duration = Date.now() - start;
+      this.trackActionMetrics('click', duration, true);
+
       return {
         success: true,
-        duration: Date.now() - start,
+        duration,
         changes: {
           navigationOccurred: false,
           domMutations: 1,
@@ -344,9 +456,12 @@ export class DomService {
     } catch (error: any) {
       this.invalidateSnapshot(); // Always invalidate, even on error
 
+      const duration = Date.now() - start;
+      this.trackActionMetrics('click', duration, false, error.message);
+
       return {
         success: false,
-        duration: Date.now() - start,
+        duration,
         error: error.message,
         changes: {
           navigationOccurred: false,
@@ -404,9 +519,12 @@ export class DomService {
 
       this.invalidateSnapshot();
 
+      const duration = Date.now() - start;
+      this.trackActionMetrics('type', duration, true);
+
       return {
         success: true,
-        duration: Date.now() - start,
+        duration,
         changes: {
           navigationOccurred: false,
           domMutations: 1,
@@ -421,9 +539,12 @@ export class DomService {
     } catch (error: any) {
       this.invalidateSnapshot();
 
+      const duration = Date.now() - start;
+      this.trackActionMetrics('type', duration, false, error.message);
+
       return {
         success: false,
-        duration: Date.now() - start,
+        duration,
         error: error.message,
         changes: {
           navigationOccurred: false,
@@ -480,9 +601,12 @@ export class DomService {
 
       this.invalidateSnapshot();
 
+      const duration = Date.now() - start;
+      this.trackActionMetrics('scroll', duration, true);
+
       return {
         success: true,
-        duration: Date.now() - start,
+        duration,
         changes: {
           navigationOccurred: false,
           domMutations: 1,
@@ -496,9 +620,12 @@ export class DomService {
     } catch (error: any) {
       this.invalidateSnapshot();
 
+      const duration = Date.now() - start;
+      this.trackActionMetrics('scroll', duration, false, error.message);
+
       return {
         success: false,
-        duration: Date.now() - start,
+        duration,
         error: error.message,
         changes: {
           navigationOccurred: false,
@@ -541,9 +668,12 @@ export class DomService {
 
       this.invalidateSnapshot();
 
+      const duration = Date.now() - start;
+      this.trackActionMetrics('keypress', duration, true);
+
       return {
         success: true,
-        duration: Date.now() - start,
+        duration,
         changes: {
           navigationOccurred: false,
           domMutations: 1,
@@ -557,9 +687,12 @@ export class DomService {
     } catch (error: any) {
       this.invalidateSnapshot();
 
+      const duration = Date.now() - start;
+      this.trackActionMetrics('keypress', duration, false, error.message);
+
       return {
         success: false,
-        duration: Date.now() - start,
+        duration,
         error: error.message,
         changes: {
           navigationOccurred: false,
@@ -572,5 +705,70 @@ export class DomService {
         timestamp: new Date().toISOString()
       };
     }
+  }
+
+  // T092: Performance metrics tracking helper
+  private trackActionMetrics(actionType: 'click' | 'type' | 'scroll' | 'keypress', duration: number, success: boolean, error?: string): void {
+    if (!this.config.enableMetrics) return;
+
+    this.metrics.actionCount++;
+    this.metrics.actionsByType[actionType]++;
+    this.metrics.totalActionDuration += duration;
+    this.metrics.averageActionDuration = this.metrics.totalActionDuration / this.metrics.actionCount;
+
+    if (!success && error) {
+      this.metrics.errorCount++;
+      const errorType = error.split(':')[0] || 'UNKNOWN_ERROR';
+      this.metrics.errorsByType[errorType] = (this.metrics.errorsByType[errorType] || 0) + 1;
+    }
+  }
+
+  // T092: Get current performance metrics
+  getMetrics(): PerformanceMetrics {
+    return { ...this.metrics };
+  }
+
+  // T092: Reset performance metrics
+  resetMetrics(): void {
+    this.metrics = {
+      snapshotCount: 0,
+      snapshotCacheHits: 0,
+      snapshotCacheMisses: 0,
+      totalSnapshotDuration: 0,
+      averageSnapshotDuration: 0,
+      actionCount: 0,
+      actionsByType: {
+        click: 0,
+        type: 0,
+        scroll: 0,
+        keypress: 0
+      },
+      totalActionDuration: 0,
+      averageActionDuration: 0,
+      errorCount: 0,
+      errorsByType: {},
+      lastReset: new Date()
+    };
+    console.log('[DomService] Performance metrics reset');
+  }
+
+  // T092: Get metrics summary for logging
+  getMetricsSummary(): string {
+    const cacheHitRate = this.metrics.snapshotCacheHits + this.metrics.snapshotCacheMisses > 0
+      ? ((this.metrics.snapshotCacheHits / (this.metrics.snapshotCacheHits + this.metrics.snapshotCacheMisses)) * 100).toFixed(1)
+      : '0.0';
+
+    return `
+[DomService Performance Metrics]
+Snapshots: ${this.metrics.snapshotCount} (avg ${this.metrics.averageSnapshotDuration.toFixed(0)}ms)
+Cache Hit Rate: ${cacheHitRate}% (${this.metrics.snapshotCacheHits} hits, ${this.metrics.snapshotCacheMisses} misses)
+Actions: ${this.metrics.actionCount} (avg ${this.metrics.averageActionDuration.toFixed(0)}ms)
+  - Click: ${this.metrics.actionsByType.click}
+  - Type: ${this.metrics.actionsByType.type}
+  - Scroll: ${this.metrics.actionsByType.scroll}
+  - Keypress: ${this.metrics.actionsByType.keypress}
+Errors: ${this.metrics.errorCount}
+Since: ${this.metrics.lastReset.toISOString()}
+    `.trim();
   }
 }

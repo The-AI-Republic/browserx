@@ -119,4 +119,26 @@ export interface ServiceConfig {
   maxTreeDepth: number;
   snapshotTimeout: number;
   retryAttempts: number;
+  enableMetrics?: boolean; // T092: Enable performance metrics collection
+}
+
+// T092: Performance metrics interface
+export interface PerformanceMetrics {
+  snapshotCount: number;
+  snapshotCacheHits: number;
+  snapshotCacheMisses: number;
+  totalSnapshotDuration: number;
+  averageSnapshotDuration: number;
+  actionCount: number;
+  actionsByType: {
+    click: number;
+    type: number;
+    scroll: number;
+    keypress: number;
+  };
+  totalActionDuration: number;
+  averageActionDuration: number;
+  errorCount: number;
+  errorsByType: Record<string, number>;
+  lastReset: Date;
 }

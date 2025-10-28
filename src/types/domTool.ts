@@ -53,9 +53,11 @@ export const NODE_TYPE_NOTATION = 12; // Deprecated
 
 /**
  * Virtual DOM node representing a single element with semantic metadata
+ * @deprecated This interface is for the legacy content-script based implementation.
+ * The new CDP-based implementation uses numeric node_id values in SerializedNode.
  */
 export interface VirtualNode {
-  /** Unique identifier: 8 random alphanumeric characters (A-Z, a-z, 0-9), e.g., "aB3xZ9k1" */
+  /** @deprecated Legacy string-based identifier. CDP implementation uses numeric node_id in SerializedNode. */
   node_id: string;
 
   /** HTML tag name (lowercase) */

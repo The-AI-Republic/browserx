@@ -53,7 +53,7 @@ interface SerializedDom {
 ## Contract 2: Click Action
 
 ### DOMTool Responsibility
-- Validate nodeId format (8 alphanumeric characters)
+- Validate nodeId is a number (CDP numeric identifier)
 - Ensure tab exists
 - Route to DomService when `useCDP = true`
 - Handle ActionResult success/failure
@@ -72,7 +72,7 @@ interface SerializedDom {
 // Input (from DOMTool)
 interface ClickRequest {
   tabId: number;
-  nodeId: string;  // Format: /^[A-Za-z0-9]{8}$/
+  nodeId: number;  // CDP numeric nodeId (e.g., 1469, 1537)
   options?: ClickOptions;
 }
 
@@ -108,7 +108,7 @@ interface ActionResult {
 ## Contract 3: Type Action
 
 ### DOMTool Responsibility
-- Validate nodeId format (8 alphanumeric characters)
+- Validate nodeId is a number (CDP numeric identifier)
 - Validate text parameter is string
 - Ensure tab exists
 - Route to DomService when `useCDP = true`

@@ -30,7 +30,7 @@ import { DomService } from './dom/DomService';
 export interface DOMToolRequest {
   action: 'snapshot' | 'click' | 'type' | 'keypress';
   tab_id?: number;
-  node_id?: string;
+  node_id?: number; // Numeric CDP nodeId
   text?: string;
   key?: string;
   options?: any;
@@ -91,8 +91,8 @@ export class DOMTool extends BaseTool {
         description: 'Target tab ID (optional, defaults to active tab)',
       },
       node_id: {
-        type: 'string',
-        description: 'Target element node ID - 8-character alphanumeric identifier from snapshot (required for click and type actions). Expected format: 8 alphanumeric characters.',
+        type: 'number',
+        description: 'Target element node ID from snapshot (required for click and type actions). This is a numeric identifier corresponding to the node_id field in the serialized DOM. Example: 1469, 1537, etc. Special values: -1 for window-level scroll, -2 for document-level keypress.',
       },
       text: {
         type: 'string',
@@ -250,7 +250,7 @@ export class DOMTool extends BaseTool {
    */
   private async executeClick(
     tabId: number,
-    nodeId: string,
+    nodeId: number,
     options?: ClickOptions
   ): Promise<ActionResult> {
     this.log('debug', 'Executing click', { tabId, nodeId, options, useCDP: this.useCDP });
@@ -296,7 +296,7 @@ export class DOMTool extends BaseTool {
    */
   private async executeType(
     tabId: number,
-    nodeId: string,
+    nodeId: number,
     text: string,
     options?: TypeOptions
   ): Promise<ActionResult> {
@@ -463,20 +463,20 @@ export class DOMTool extends BaseTool {
         return null; // Only action is required
 
       case 'click':
-        if (!req.node_id || typeof req.node_id !== 'string') {
-          return 'node_id is required for click action';
+        if (req.node_id === undefined || typeof req.node_id !== 'number') {
+          return 'node_id is required for click action and must be a number';
         }
-        if (!/^[A-Za-z0-9]{8}$/.test(req.node_id)) {
-          return 'node_id must be 8 alphanumeric characters';
+        if (!Number.isInteger(req.node_id)) {
+          return 'node_id must be an integer';
         }
         return null;
 
       case 'type':
-        if (!req.node_id || typeof req.node_id !== 'string') {
-          return 'node_id is required for type action';
+        if (req.node_id === undefined || typeof req.node_id !== 'number') {
+          return 'node_id is required for type action and must be a number';
         }
-        if (!/^[A-Za-z0-9]{8}$/.test(req.node_id)) {
-          return 'node_id must be 8 alphanumeric characters';
+        if (!Number.isInteger(req.node_id)) {
+          return 'node_id must be an integer';
         }
         if (!req.text || typeof req.text !== 'string') {
           return 'text is required for type action';

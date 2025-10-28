@@ -75,12 +75,12 @@ export class DomSnapshot implements IDomSnapshot {
 
     const start = Date.now();
 
-    // Build hierarchical tree structure
-    const body = this.buildSerializedTree(this.virtualDom);
+    // Build flattened tree structure (Pass 2: Remove structural junk)
+    const body = this.flattenNode(this.virtualDom);
 
     // test>>
     console.log('[DomSnapshot] Serialized Tree:');
-    console.log(JSON.stringify(this._serialized, null, 2));
+    console.log(body);
     // test<<
 
     this._serialized = {
@@ -89,7 +89,8 @@ export class DomSnapshot implements IDomSnapshot {
           url: this.pageContext.url,
           title: this.pageContext.title
         },
-        body
+        body,
+        stats: this.stats
       }
     };
 
@@ -98,7 +99,72 @@ export class DomSnapshot implements IDomSnapshot {
     return this._serialized;
   }
 
-  private buildSerializedTree(node: VirtualNode): SerializedNode {
+  /**
+   * Flatten VirtualNode tree to only include semantic/interactive elements.
+   * This implements Pass 2 of the two-pass system:
+   * - Keep semantic nodes (Tier 1 & 2)
+   * - Keep semantic containers (form, table, dialog, etc.)
+   * - Hoist children of structural nodes (remove wrapper)
+   * - Discard leaf structural nodes
+   */
+  private flattenNode(node: VirtualNode): SerializedNode {
+    // Case 1: Keep semantic and non-semantic nodes (Tier 1 & 2)
+    if (this.isSemanticNode(node)) {
+      return this.buildSerializedNode(node, true);
+    }
+
+    // Case 2: Keep semantic containers (form, table, dialog, navigation, main)
+    if (this.isSemanticContainer(node)) {
+      return this.buildSerializedNode(node, false);
+    }
+
+    // Case 3: Structural node with children - hoist children to parent level
+    if (node.children && node.children.length > 0) {
+      const flattenedChildren = node.children
+        .map(child => this.flattenNode(child))
+        .filter((child): child is SerializedNode => child !== null);
+
+      // If only one child, return it directly (hoist)
+      if (flattenedChildren.length === 1) {
+        return flattenedChildren[0];
+      }
+
+      // If multiple children, we need to wrap them somehow
+      // Return a minimal structural node to maintain grouping
+      if (flattenedChildren.length > 1) {
+        return {
+          node_id: node.nodeId,
+          tag: node.localName || node.nodeName.toLowerCase(),
+          children: flattenedChildren
+        };
+      }
+    }
+
+    // Case 4: Leaf structural node with no children - discard
+    // Return a minimal placeholder that will be filtered out
+    return null as any;
+  }
+
+  /**
+   * Check if node is semantic or non-semantic (interactive)
+   */
+  private isSemanticNode(node: VirtualNode): boolean {
+    return node.tier === 'semantic' || node.tier === 'non-semantic';
+  }
+
+  /**
+   * Check if node is a semantic container that should be preserved for structure
+   */
+  private isSemanticContainer(node: VirtualNode): boolean {
+    const role = node.accessibility?.role || '';
+    const containerRoles = ['form', 'table', 'dialog', 'navigation', 'main', 'region', 'article', 'section'];
+    return containerRoles.includes(role);
+  }
+
+  /**
+   * Build a SerializedNode with metadata
+   */
+  private buildSerializedNode(node: VirtualNode, includeMetadata: boolean): SerializedNode {
     // Get attributes for additional metadata
     const attrMap = new Map<string, string>();
     if (node.attributes) {
@@ -107,31 +173,71 @@ export class DomSnapshot implements IDomSnapshot {
       }
     }
 
-    // Build states object from accessibility info
-    const states: Record<string, boolean | string> = {};
-    if (node.accessibility?.disabled !== undefined) states.disabled = node.accessibility.disabled;
-    if (node.accessibility?.checked !== undefined) states.checked = node.accessibility.checked;
-    if (node.accessibility?.required !== undefined) states.required = node.accessibility.required;
-    if (node.accessibility?.expanded !== undefined) states.expanded = node.accessibility.expanded;
-
+    // Build base node
     const serializedNode: SerializedNode = {
       node_id: node.nodeId,
-      tag: node.localName || node.nodeName.toLowerCase(),
-      role: node.accessibility?.role,
-      "aria-label": node.accessibility?.name,
-      text: getTextContent(node),
-      value: typeof node.accessibility?.value === 'string' ? node.accessibility.value : undefined,
-      href: attrMap.get('href'),
-      inputType: attrMap.get('type'),
-      placeholder: attrMap.get('placeholder'),
-      states: Object.keys(states).length > 0 ? states : undefined
+      tag: node.localName || node.nodeName.toLowerCase()
     };
 
-    // Recursively build children
+    // Add role if available
+    if (node.accessibility?.role) {
+      serializedNode.role = node.accessibility.role;
+    }
+
+    // Add full metadata for semantic nodes
+    if (includeMetadata) {
+      // Aria label / name
+      if (node.accessibility?.name) {
+        serializedNode['aria-label'] = node.accessibility.name;
+      }
+
+      // Text content
+      const text = getTextContent(node);
+      if (text) {
+        serializedNode.text = text;
+      }
+
+      // Value (for inputs)
+      if (typeof node.accessibility?.value === 'string') {
+        serializedNode.value = node.accessibility.value;
+      }
+
+      // Link href
+      if (attrMap.has('href')) {
+        serializedNode.href = attrMap.get('href');
+      }
+
+      // Input type
+      if (attrMap.has('type')) {
+        serializedNode.inputType = attrMap.get('type');
+      }
+
+      // Placeholder
+      if (attrMap.has('placeholder')) {
+        serializedNode.placeholder = attrMap.get('placeholder');
+      }
+
+      // Build states object from accessibility info
+      const states: Record<string, boolean | string> = {};
+      if (node.accessibility?.disabled !== undefined) states.disabled = node.accessibility.disabled;
+      if (node.accessibility?.checked !== undefined) states.checked = node.accessibility.checked;
+      if (node.accessibility?.required !== undefined) states.required = node.accessibility.required;
+      if (node.accessibility?.expanded !== undefined) states.expanded = node.accessibility.expanded;
+
+      if (Object.keys(states).length > 0) {
+        serializedNode.states = states;
+      }
+    }
+
+    // Recursively flatten children
     if (node.children && node.children.length > 0) {
-      serializedNode.children = node.children
-        .map(child => this.buildSerializedTree(child))
-        .filter(child => child !== null);
+      const flattenedChildren = node.children
+        .map(child => this.flattenNode(child))
+        .filter((child): child is SerializedNode => child !== null);
+
+      if (flattenedChildren.length > 0) {
+        serializedNode.children = flattenedChildren;
+      }
     }
 
     return serializedNode;

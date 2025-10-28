@@ -239,7 +239,7 @@ export class DomService {
 
     const virtualDom = buildVirtualTree(domTree.root);
     // test>>
-    console.log('[DomService] Virtual DOM Tree:');
+    console.log('[DomService Test] Virtual DOM Tree:');
     console.log(JSON.stringify(virtualDom, null, 2));
     // test<<
 

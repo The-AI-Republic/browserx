@@ -18,6 +18,7 @@ import type {
   KeyPressOptions,
   ActionResult,
 } from '../types/domTool';
+import { DomService } from './dom/DomService';
 
 // ============================================================================
 // Type Definitions for v3.0 Wrapper
@@ -73,6 +74,9 @@ export enum DOMToolErrorCode {
  * Provides high-level DOM reading through captureInteractionContent().
  */
 export class DOMTool extends BaseTool {
+  // Feature flag for CDP-based implementation
+  private useCDP: boolean = true; // Enable CDP by default for new refactor
+
   protected toolDefinition: ToolDefinition = createToolDefinition(
     'browser_dom',
     'Unified DOM inspection and action tool. Capture page DOM snapshots with token-optimized serialization, and execute actions (click, type, keypress) on elements using persistent node IDs. Combines DOM capture with page interaction in a single tool.',
@@ -212,8 +216,15 @@ export class DOMTool extends BaseTool {
     tabId: number,
     options?: SerializationOptions
   ): Promise<SerializedDom> {
-    this.log('debug', 'Executing snapshot', { tabId, options });
+    this.log('debug', 'Executing snapshot', { tabId, options, useCDP: this.useCDP });
 
+    // Route to CDP implementation if flag is enabled
+    if (this.useCDP) {
+      const domService = await DomService.forTab(tabId);
+      return await domService.getSerializedDom();
+    }
+
+    // Fall back to content script implementation
     const response = await chrome.tabs.sendMessage(tabId, {
       type: MessageType.TAB_COMMAND,
       payload: {
@@ -242,8 +253,15 @@ export class DOMTool extends BaseTool {
     nodeId: string,
     options?: ClickOptions
   ): Promise<ActionResult> {
-    this.log('debug', 'Executing click', { tabId, nodeId, options });
+    this.log('debug', 'Executing click', { tabId, nodeId, options, useCDP: this.useCDP });
 
+    // Route to CDP implementation if flag is enabled
+    if (this.useCDP) {
+      const domService = await DomService.forTab(tabId);
+      return await domService.click(nodeId);
+    }
+
+    // Fall back to content script implementation
     const response = await this.executeWithRetry(
       async () => {
         return await chrome.tabs.sendMessage(tabId, {
@@ -282,8 +300,15 @@ export class DOMTool extends BaseTool {
     text: string,
     options?: TypeOptions
   ): Promise<ActionResult> {
-    this.log('debug', 'Executing type', { tabId, nodeId, text, options });
+    this.log('debug', 'Executing type', { tabId, nodeId, text, options, useCDP: this.useCDP });
 
+    // Route to CDP implementation if flag is enabled
+    if (this.useCDP) {
+      const domService = await DomService.forTab(tabId);
+      return await domService.type(nodeId, text);
+    }
+
+    // Fall back to content script implementation
     const response = await this.executeWithRetry(
       async () => {
         return await chrome.tabs.sendMessage(tabId, {
@@ -320,8 +345,21 @@ export class DOMTool extends BaseTool {
     key: string,
     options?: KeyPressOptions
   ): Promise<ActionResult> {
-    this.log('debug', 'Executing keypress', { tabId, key, options });
+    this.log('debug', 'Executing keypress', { tabId, key, options, useCDP: this.useCDP });
 
+    // Route to CDP implementation if flag is enabled
+    if (this.useCDP) {
+      const domService = await DomService.forTab(tabId);
+      // Extract modifiers from options if present
+      const modifiers = options?.modifiers
+        ? Object.entries(options.modifiers)
+            .filter(([_, enabled]) => enabled)
+            .map(([mod]) => mod.charAt(0).toUpperCase() + mod.slice(1))
+        : undefined;
+      return await domService.keypress(key, modifiers);
+    }
+
+    // Fall back to content script implementation
     const response = await this.executeWithRetry(
       async () => {
         return await chrome.tabs.sendMessage(tabId, {

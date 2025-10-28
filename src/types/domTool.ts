@@ -9,6 +9,45 @@
  */
 
 // ============================================================================
+// Constants
+// ============================================================================
+
+/**
+ * Special nodeId for window-level scroll actions
+ * Use this when calling scroll() on the entire window
+ */
+export const NODE_ID_WINDOW = -1;
+
+/**
+ * Special nodeId for document-level keyboard actions
+ * Use this when calling keypress() without a specific target element
+ */
+export const NODE_ID_DOCUMENT = -2;
+
+/**
+ * DOM Node Type Constants (from W3C DOM specification)
+ * https://developer.mozilla.org/en-US/docs/Web/API/Node/nodeType
+ *
+ * These constants represent the type of DOM node in the VirtualNode tree.
+ * Most commonly used are:
+ * - NODE_TYPE_ELEMENT (1): HTML elements like <div>, <button>, etc.
+ * - NODE_TYPE_TEXT (3): Text content within elements
+ * - NODE_TYPE_DOCUMENT_FRAGMENT (11): Shadow DOM roots
+ */
+export const NODE_TYPE_ELEMENT = 1;
+export const NODE_TYPE_ATTRIBUTE = 2;
+export const NODE_TYPE_TEXT = 3;
+export const NODE_TYPE_CDATA_SECTION = 4;
+export const NODE_TYPE_ENTITY_REFERENCE = 5; // Deprecated
+export const NODE_TYPE_ENTITY = 6; // Deprecated
+export const NODE_TYPE_PROCESSING_INSTRUCTION = 7;
+export const NODE_TYPE_COMMENT = 8;
+export const NODE_TYPE_DOCUMENT = 9;
+export const NODE_TYPE_DOCUMENT_TYPE = 10;
+export const NODE_TYPE_DOCUMENT_FRAGMENT = 11;
+export const NODE_TYPE_NOTATION = 12; // Deprecated
+
+// ============================================================================
 // Data Structures
 // ============================================================================
 
@@ -182,7 +221,7 @@ export interface SerializedDom {
  * Serialized node (flattened, defaults omitted)
  */
 export interface SerializedNode {
-  node_id: string;
+  node_id: number;
   tag: string;
   role?: string;
   "aria-label"?: string;
@@ -358,10 +397,10 @@ export interface ActionResult {
   };
 
   /** Node ID that was acted upon */
-  nodeId: string;
+  nodeId: number;
 
   /** Action type */
-  actionType: "click" | "type" | "keypress";
+  actionType: "click" | "type" | "keypress" | "scroll";
 
   /** ISO 8601 timestamp */
   timestamp: string;
@@ -414,13 +453,13 @@ export interface DomTool {
   /**
    * Click on an element
    */
-  click(nodeId: string, options?: ClickOptions): Promise<ActionResult>;
+  click(nodeId: number, options?: ClickOptions): Promise<ActionResult>;
 
   /**
    * Type text into an element
    */
   type(
-    nodeId: string,
+    nodeId: number,
     text: string,
     options?: TypeOptions
   ): Promise<ActionResult>;

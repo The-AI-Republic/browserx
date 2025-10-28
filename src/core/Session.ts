@@ -21,6 +21,7 @@ import { SessionState, type SessionStateExport } from './session/state/SessionSt
 import { type SessionServices, createSessionServices } from './session/state/SessionServices';
 import { ActiveTurn } from './session/state/ActiveTurn';
 import type { TokenUsageInfo, RunningTask, RateLimitSnapshot, TurnAbortReason, InitialHistory } from './session/state/types';
+import { isDOMSnapshotOutput, compressSnapshot } from './session/state/SnapshotCompressor';
 
 /**
  * Execution state of the session
@@ -1235,6 +1236,9 @@ export class Session {
    * Converts ResponseItems to RolloutItems and persists them via RolloutRecorder.
    * This is used to save conversation history to persistent storage.
    *
+   * T011: Enhanced to compress DOM snapshots immediately before persistence
+   * Rollout storage never needs uncompressed snapshots (not directly read by LLM)
+   *
    * @param items Response items to persist
    * @private
    */
@@ -1243,8 +1247,12 @@ export class Session {
       return;
     }
 
+    // Logic 2: Compress DOM snapshots immediately before persistence
+    // Rollout is never directly read by LLM, so we compress all snapshots
+    const compressedItems = items.map((item) => compressSnapshot(item));
+
     // Convert ResponseItems to RolloutItems
-    const rolloutItems: RolloutItem[] = items.map((item) => ({
+    const rolloutItems: RolloutItem[] = compressedItems.map((item) => ({
       type: 'response_item',
       payload: item,
     }));
@@ -1263,9 +1271,19 @@ export class Session {
    * Records ResponseItems to both SessionState (in-memory history) and
    * RolloutRecorder (persistent storage).
    *
+   * T010: Enhanced with inline compression logic for DOM snapshots
+   *
    * @param items Response items to record
    */
   async recordConversationItemsDual(items: ResponseItem[]): Promise<void> {
+    // Logic 1: SessionState (in-memory)
+    // If incoming items contain any DOM snapshot output, compress previous snapshot in history
+    // This keeps the latest snapshot fresh for LLM reasoning
+    if (items.some(item => isDOMSnapshotOutput(item))) {
+      // Compress the previous DOM snapshot before recording the new one
+      this.sessionState.compressPreviousDomSnapshot();
+    }
+
     // Record to SessionState (in-memory history)
     this.sessionState.recordItems(items);
 

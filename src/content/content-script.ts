@@ -41,8 +41,7 @@ function initialize(): void {
 	setupMessageHandlers();
 	announcePresence();
 
-	// Initialize visual effects controller
-	initializeVisualEffects();
+	// Note: Visual effects are initialized lazily when DomTool is first used
 }
 
 /**
@@ -77,9 +76,15 @@ function initializeVisualEffects(): void {
 /**
  * Get or create DomTool singleton instance
  * NEW DOM TOOL v3.0
+ * Lazy initialization: Creates DomTool and visual effects on first use
  */
 function getDomTool(config?: Partial<DomToolConfig>): DomTool {
 	if (!domTool) {
+		// Initialize visual effects first (if not already initialized)
+		if (!visualEffectController) {
+			initializeVisualEffects();
+		}
+
 		domTool = new DomTool({
 			autoInvalidate: true,
 			mutationThrottle: 500,
@@ -98,6 +103,30 @@ function getDomTool(config?: Partial<DomToolConfig>): DomTool {
 	return domTool;
 }
 
+/**
+ * Initialize DomTool explicitly
+ * This command allows the agent to manually initialize DomTool and visual effects
+ * in the target tab before performing any actions.
+ */
+function initDomTool(config?: Partial<DomToolConfig>) {
+	try {
+		const tool = getDomTool(config);
+
+		return {
+			success: true,
+			message: 'DomTool initialized successfully',
+			tabId: getTabId(),
+			initialized: {
+				domTool: !!domTool,
+				visualEffects: !!visualEffectController,
+			}
+		};
+	} catch (error) {
+		console.error('[Browserx] Failed to initialize DomTool:', error);
+		throw error;
+	}
+}
+
 function setupMessageHandlers(): void {
 	if (!router) {
 		return;
@@ -114,6 +143,11 @@ function setupMessageHandlers(): void {
 
 	router.on(MessageType.TAB_COMMAND, async (message) => {
 		const { command, args } = message.payload;
+
+		// INITIALIZATION COMMANDS
+		if (command === 'init.domtool') {
+			return initDomTool(args);
+		}
 
 		// NEW DOM TOOL (v3.0)
 		if (command === 'dom.getSnapshot') {
@@ -315,6 +349,7 @@ function announcePresence(): void {
 	router.send(MessageType.TOOL_RESULT, {
 		type: 'tools-available',
 		tools: [
+			'init.domtool',                  // Manual initialization
 			'dom.getSnapshot',               // v3.0
 			'dom.click',                     // v3.0
 			'dom.type',                      // v3.0

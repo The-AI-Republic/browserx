@@ -1,671 +1,353 @@
 /**
  * DOM Tool v2.0 - High-Level DOM Reading
  *
- * Refactored to provide a single high-level `captureDOM()` operation
- * that captures complete page snapshots for AI agent consumption.
+ * Refactored to provide a single high-level interaction capture operation
+ * that captures page models for AI agent consumption.
  *
  * BREAKING CHANGE: Removed all atomic operations (query, click, type, etc.)
  * in favor of comprehensive DOM capture with selector_map for element lookup.
  */
 
 import { BaseTool, createToolDefinition, type BaseToolRequest, type BaseToolOptions, type ToolDefinition } from './BaseTool';
-import { DomService, DOMServiceError, DOMServiceErrorCode } from './dom/service';
-import { DOMTreeSerializer } from './dom/serializer/serializer';
-import { DEFAULT_INCLUDE_ATTRIBUTES } from './dom/views';
-import { z } from 'zod';
-import type {
-  DOMCaptureRequest,
-  DOMCaptureResponse,
-  SerializedDOMState
-} from '../types/domTool';
-import { DOMErrorCode } from '../types/domTool';
 import { MessageType } from '../core/MessageRouter';
-import type { DOMCaptureRequestMessage, DOMCaptureResponseMessage, toContentOptions } from '../types/domMessages';
+import type {
+  SerializationOptions,
+  SerializedDom,
+  ClickOptions,
+  TypeOptions,
+  KeyPressOptions,
+  ActionResult,
+} from '../types/domTool';
+
+// ============================================================================
+// Type Definitions for v3.0 Wrapper
+// ============================================================================
 
 /**
- * Cache entry for DOM states
+ * Unified DOM tool request (discriminated union by action type)
  */
-interface CacheEntry {
-  state: SerializedDOMState;
-  timestamp: number;
-  url: string;
+export interface DOMToolRequest {
+  action: 'snapshot' | 'click' | 'type' | 'keypress';
+  tab_id?: number;
+  node_id?: string;
+  text?: string;
+  key?: string;
+  options?: any;
 }
 
 /**
+ * Unified DOM tool response
+ */
+export interface DOMToolResponse {
+  success: boolean;
+  data?: SerializedDom | ActionResult;
+  error?: {
+    code: string;
+    message: string;
+    details: Record<string, any>;
+  };
+  metadata: {
+    duration: number;
+    toolName: 'browser_dom';
+    tabId: number;
+    retryCount?: number;
+  };
+}
+
+/**
+ * DOM Tool error codes
+ */
+export enum DOMToolErrorCode {
+  VALIDATION_ERROR = 'VALIDATION_ERROR',
+  TAB_NOT_FOUND = 'TAB_NOT_FOUND',
+  CONTENT_SCRIPT_NOT_LOADED = 'CONTENT_SCRIPT_NOT_LOADED',
+  PERMISSION_DENIED = 'PERMISSION_DENIED',
+  ELEMENT_NOT_FOUND = 'ELEMENT_NOT_FOUND',
+  ACTION_FAILED = 'ACTION_FAILED',
+  TIMEOUT = 'TIMEOUT',
+  UNKNOWN_ERROR = 'UNKNOWN_ERROR',
+}
+/**
  * DOM Tool v2.0 Implementation
  *
- * Provides high-level DOM reading through a single captureDOM() method.
+ * Provides high-level DOM reading through captureInteractionContent().
  */
 export class DOMTool extends BaseTool {
   protected toolDefinition: ToolDefinition = createToolDefinition(
     'browser_dom',
-    'Capture complete DOM state from web pages - high-level DOM reading for AI agents',
+    'Unified DOM inspection and action tool. Capture page DOM snapshots with token-optimized serialization, and execute actions (click, type, keypress) on elements using persistent node IDs. Combines DOM capture with page interaction in a single tool.',
     {
+      action: {
+        type: 'string',
+        description: 'Action type: snapshot (capture DOM), click (click element), type (input text), keypress (keyboard input)',
+        enum: ['snapshot', 'click', 'type', 'keypress'],
+      },
       tab_id: {
         type: 'number',
-        description: 'Tab ID to capture from (undefined = active tab)',
+        description: 'Target tab ID (optional, defaults to active tab)',
       },
-      include_shadow_dom: {
-        type: 'boolean',
-        description: 'Include shadow DOM trees (default: true)',
+      node_id: {
+        type: 'string',
+        description: 'Target element node ID - 8-character alphanumeric identifier from snapshot (required for click and type actions). Expected format: 8 alphanumeric characters.',
       },
-      include_iframes: {
-        type: 'boolean',
-        description: 'Include iframe content (default: true)',
+      text: {
+        type: 'string',
+        description: 'Text to type into element (required for type action). Use options.commit to control finalization: "change" (default, fires change event) or "enter" (appends Enter keystroke for search/chat inputs).',
       },
-      max_iframe_depth: {
-        type: 'number',
-        description: 'Maximum iframe nesting depth (default: 3, max: 10)',
+      key: {
+        type: 'string',
+        description: 'Key to press (required for keypress action). Examples: Enter, Escape, Tab, ArrowDown',
       },
-      max_iframe_count: {
-        type: 'number',
-        description: 'Maximum total iframe count (default: 15, max: 50)',
-      },
-      paint_order_filtering: {
-        type: 'boolean',
-        description: 'Remove elements occluded by paint order (default: true)',
-      },
-      bbox_filtering: {
-        type: 'boolean',
-        description: 'Remove off-screen elements (default: true)',
-      },
-      timeout_ms: {
-        type: 'number',
-        description: 'Capture timeout in milliseconds (default: 5000, max: 30000)',
-      },
-      use_cache: {
-        type: 'boolean',
-        description: 'Use cached DOM state if valid (default: true)',
-      },
-      include_timing: {
-        type: 'boolean',
-        description: 'Include performance timing information (default: false)',
+      options: {
+        type: 'object',
+        description: 'Action-specific options. For type action: { clearFirst?: boolean, speed?: number, commit?: "change"|"enter", blur?: boolean }. commit controls input finalization: "change" (default, fires change event) or "enter" (appends Enter keystroke). For click: { button?: "left"|"right"|"middle", scrollIntoView?: boolean }. For keypress: { modifiers?: { ctrl?: boolean, shift?: boolean, alt?: boolean, meta?: boolean } }. For snapshot: { includeValues?: boolean, includeMetadata?: boolean }.',
       },
     },
     {
-      required: [],
+      required: ['action'],
       category: 'dom',
-      version: '2.0.0',
+      version: '3.0.0',
       metadata: {
         capabilities: [
-          'dom_capture',
-          'serialized_tree',
-          'selector_map',
-          'accessibility_tree',
+          'dom_snapshot',
+          'dom_serialization',
+          'page_click',
+          'page_input',
+          'page_keypress',
+          'change_detection',
           'iframe_support',
           'shadow_dom_support',
-          'caching'
+          'node_id_preservation',
+          'auto_invalidation',
+          'incremental_virtual_dom_updates',
         ],
-        permissions: ['activeTab', 'scripting', 'webNavigation'],
+        permissions: ['activeTab', 'scripting', 'tabs'],
       },
     }
   );
-
-  private domService: DomService | null = null;
-  private cache: Map<string, CacheEntry> = new Map();
-  private readonly CACHE_TTL_MS = 30000; // 30 seconds
-  private readonly CACHE_MAX_ENTRIES = 5; // LRU eviction
 
   constructor() {
     super();
   }
 
   /**
-   * Execute DOM tool action - now uses captureInteractionContent
+   * Execute DOM tool action - routes to v3.0 implementation
    */
-  protected async executeImpl(request: DOMCaptureRequest, options?: BaseToolOptions): Promise<DOMCaptureResponse> {
+  protected async executeImpl(
+    request: BaseToolRequest,
+    options?: BaseToolOptions
+  ): Promise<DOMToolResponse> {
     // Validate Chrome context
     this.validateChromeContext();
 
     // Validate required permissions
     await this.validatePermissions(['activeTab', 'scripting']);
 
-    this.log('debug', 'Executing captureInteractionContent', request);
-
-    try {
-      // Use new implementation
-      return await this.captureInteractionContent(request);
-
-      // Old implementation (commented out)
-      // return await this.captureDOM(request);
-    } catch (error) {
-      return this.handleCaptureError(error, request);
-    }
-  }
-
-  /**
-   * Capture page interaction content using new captureInteractionContent() method
-   *
-   * This method uses the privacy-first, LLM-optimized interaction capture system
-   * instead of the legacy full DOM tree capture.
-   */
-  private async captureInteractionContent(request: DOMCaptureRequest): Promise<DOMCaptureResponse> {
-    // Get target tab
-    const targetTab = request.tab_id
-      ? await this.validateTabId(request.tab_id)
-      : await this.getActiveTab();
-
-    const tabId = targetTab.id!;
-
-    // Ensure content script is injected
-    await this.ensureContentScriptInjected(tabId);
-
-    // Create DomService instance for this tab
-    this.domService = new DomService(
-      { tab_id: tabId },
-      {
-        log: (msg: string) => this.log('info', msg),
-        error: (msg: string) => this.log('error', msg),
-        warn: (msg: string) => this.log('warn', msg)
-      },
-      false, // cross_origin_iframes
-      request.paint_order_filtering !== false,
-      request.max_iframe_count || 15,
-      request.max_iframe_depth || 3
-    );
-
-    // Capture interaction content
-    const pageModel = await this.domService.captureInteractionContent({
-      maxControls: 400,
-      maxHeadings: 30,
-      includeValues: false,
-      maxIframeDepth: request.max_iframe_depth || 1
-    });
-
-    // Convert PageModel to DOMCaptureResponse format
-    return this.convertPageModelToResponse(pageModel, targetTab);
-  }
-
-  /**
-   * Convert PageModel to DOMCaptureResponse format
-   *
-   * Transforms the LLM-optimized PageModel into the expected DOMCaptureResponse
-   * format used by the DOMTool interface.
-   */
-  private convertPageModelToResponse(pageModel: any, targetTab: chrome.tabs.Tab): DOMCaptureResponse {
-    // Build serialized tree as a formatted string
-    const serializedLines = [
-      `Page: ${pageModel.title}`,
-      `URL: ${pageModel.url || 'unknown'}`,
-      '',
-      '=== Headings ===',
-      ...pageModel.headings.map((h: string, i: number) => `${i + 1}. ${h}`),
-      '',
-      '=== Regions ===',
-      `Regions: ${pageModel.regions.join(', ')}`,
-      '',
-    ];
-
-    // Add text content if available
-    if (pageModel.textContent && pageModel.textContent.length > 0) {
-      serializedLines.push('=== Text Content ===');
-      pageModel.textContent.forEach((text: string, i: number) => {
-        serializedLines.push(`[${i + 1}] ${text}`);
-        serializedLines.push(''); // Empty line between blocks
-      });
-    }
-
-    // Add interactive controls
-    serializedLines.push('=== Interactive Controls ===');
-    serializedLines.push(...pageModel.controls.map((ctrl: any) => {
-      const states = [];
-      if (ctrl.states.disabled) states.push('disabled');
-      if (ctrl.states.checked) states.push('checked');
-      if (ctrl.states.required) states.push('required');
-      const stateStr = states.length > 0 ? ` [${states.join(', ')}]` : '';
-      const region = ctrl.region ? ` (in ${ctrl.region})` : '';
-      return `${ctrl.id}: ${ctrl.role} "${ctrl.name}"${stateStr}${region}`;
-    }));
-
-    // Build selector map from aimap
-    const selectorMap: { [index: number]: any } = {};
-    for (const [id, selector] of Object.entries(pageModel.aimap)) {
-      const control = pageModel.controls.find((c: any) => c.id === id);
-      if (control) {
-        const index = parseInt(id.split('_')[1]);
-        selectorMap[index] = {
-          backend_node_id: index,
-          node_name: control.role.toUpperCase(),
-          attributes: {
-            selector: selector,
-            name: control.name,
-            role: control.role,
-            ...(control.states.placeholder && { placeholder: control.states.placeholder }),
-            ...(control.states.href && { href: control.states.href })
-          },
-          absolute_position: control.boundingBox || { x: 0, y: 0, width: 0, height: 0 },
-          is_visible: control.visible
-        };
-      }
-    }
-
-    // Return formatted response
-    return {
-      success: true,
-      dom_state: {
-        serialized_tree: serializedLines.join('\n'),
-        selector_map: selectorMap,
-        metadata: {
-          capture_timestamp: Date.now(),
-          page_url: pageModel.url || targetTab.url || '',
-          page_title: pageModel.title,
-          viewport: {
-            width: 0,
-            height: 0,
-            device_pixel_ratio: 1,
-            scroll_x: 0,
-            scroll_y: 0,
-            visible_width: 0,
-            visible_height: 0
-          },
-          total_nodes: pageModel.controls.length,
-          interactive_elements: pageModel.controls.length,
-          iframe_count: 0,
-          max_depth: 0
-        }
-      }
-    };
-  }
-
-  /**
-   * Capture complete DOM state from a tab
-   *
-   * This is the primary method of DOMTool v2.0. It captures a comprehensive
-   * snapshot of the DOM including structure, styles, accessibility attributes,
-   * iframes, and shadow DOM. Returns both a serialized tree (for LLM consumption)
-   * and a selector_map (for direct element detail lookup).
-   *
-   * @param request - Capture options including tab_id, filtering options, and caching
-   * @param request.tab_id - Tab ID to capture from (undefined = active tab)
-   * @param request.include_shadow_dom - Include shadow DOM trees (default: true)
-   * @param request.include_iframes - Include iframe content (default: true)
-   * @param request.max_iframe_depth - Maximum iframe nesting depth (default: 3, max: 10)
-   * @param request.max_iframe_count - Maximum total iframe count (default: 15, max: 50)
-   * @param request.paint_order_filtering - Remove elements occluded by paint order (default: true)
-   * @param request.bbox_filtering - Remove off-screen elements (default: true)
-   * @param request.timeout_ms - Capture timeout in milliseconds (default: 5000, max: 30000)
-   * @param request.use_cache - Use cached DOM state if valid (default: true)
-   * @param request.include_timing - Include performance timing information (default: false)
-   *
-   * @returns Promise resolving to DOMCaptureResponse with success flag and either dom_state or error
-   *
-   * @throws {Error} Validation error if request parameters are invalid
-   * @throws {DOMServiceError} TAB_NOT_FOUND if tab_id doesn't exist
-   * @throws {DOMServiceError} CONTENT_SCRIPT_NOT_LOADED if content script injection fails
-   * @throws {DOMServiceError} TIMEOUT if capture exceeds timeout_ms
-   * @throws {DOMServiceError} PERMISSION_DENIED if required permissions missing
-   *
-   * @example
-   * // Capture DOM from active tab with default settings
-   * const result = await domTool.captureDOM({});
-   * if (result.success) {
-   *   console.log('Captured', result.dom_state.metadata.total_nodes, 'nodes');
-   *   console.log('Interactive elements:', Object.keys(result.dom_state.selector_map).length);
-   * }
-   *
-   * @example
-   * // Capture specific tab with custom options
-   * const result = await domTool.captureDOM({
-   *   tab_id: 123,
-   *   include_iframes: false,
-   *   timeout_ms: 10000,
-   *   include_timing: true
-   * });
-   *
-   * @example
-   * // Lookup element details using selector_map
-   * const result = await domTool.captureDOM({});
-   * if (result.success) {
-   *   const element = result.dom_state.selector_map[1];
-   *   console.log('Element:', element.node_name, element.attributes);
-   *   console.log('Position:', element.absolute_position);
-   * }
-   */
-  async captureDOM(request: DOMCaptureRequest): Promise<DOMCaptureResponse> {
     // Validate request
-    const validatedRequest = this.validateRequest(request);
+    const validationError = this.validateRequest(request);
+    if (validationError) {
+      throw new Error(validationError);
+    }
+
+    const typedRequest = request as DOMToolRequest;
 
     // Get target tab
-    const targetTab = validatedRequest.tab_id
-      ? await this.validateTabId(validatedRequest.tab_id)
+    const targetTab = typedRequest.tab_id
+      ? await this.validateTabId(typedRequest.tab_id)
       : await this.getActiveTab();
 
     const tabId = targetTab.id!;
 
-    // Check cache if enabled
-    if (validatedRequest.use_cache !== false) {
-      const cached = this.getCachedState(tabId, targetTab.url || '');
-      if (cached) {
-        this.log('debug', `Returning cached DOM state for tab ${tabId}`);
-        return {
-          success: true,
-          dom_state: cached
-        };
-      }
-    }
-
     // Ensure content script is injected
     await this.ensureContentScriptInjected(tabId);
 
-    // Create DomService instance for this tab
-    this.domService = new DomService(
-      { tab_id: tabId },
-      {
-        log: (msg: string) => this.log('info', msg),
-        error: (msg: string) => this.log('error', msg),
-        warn: (msg: string) => this.log('warn', msg)
-      },
-      false, // cross_origin_iframes
-      validatedRequest.paint_order_filtering !== false,
-      validatedRequest.max_iframe_count || 15,
-      validatedRequest.max_iframe_depth || 3
-    );
-
+    // Route by action type
+    const startTime = Date.now();
     try {
-      // Capture DOM state through DomService
-      const startTime = performance.now();
-      const serializedState = await this.domService.get_serialized_dom_tree();
-      const totalTime = performance.now() - startTime;
+      let data: SerializedDom | ActionResult;
 
-      // Add timing if requested
-      if (validatedRequest.include_timing) {
-        (serializedState as any).timing = {
-          ...(serializedState as any).timing,
-          total_ms: totalTime
-        };
+      switch (typedRequest.action) {
+        case 'snapshot':
+          data = await this.executeSnapshot(tabId, typedRequest.options);
+          break;
+        case 'click':
+          data = await this.executeClick(tabId, typedRequest.node_id!, typedRequest.options);
+          break;
+        case 'type':
+          data = await this.executeType(tabId, typedRequest.node_id!, typedRequest.text!, typedRequest.options);
+          break;
+        case 'keypress':
+          data = await this.executeKeypress(tabId, typedRequest.key!, typedRequest.options);
+          break;
+        default:
+          throw new Error(`Unknown action: ${typedRequest.action}`);
       }
 
-      const serialized_tree = DOMTreeSerializer.serialize_tree(
-        (serializedState as any)._root || null,
-        DEFAULT_INCLUDE_ATTRIBUTES
-      );
+      const duration = Date.now() - startTime;
 
       return {
         success: true,
-        dom_state: {
-          serialized_tree,
-          selector_map: (serializedState as any).selector_map || {},
-          metadata: {
-            capture_timestamp: Date.now(),
-            page_url: targetTab.url || '',
-            page_title: targetTab.title || '',
-            viewport: {
-              width: 0,
-              height: 0,
-              device_pixel_ratio: 1,
-              scroll_x: 0,
-              scroll_y: 0,
-              visible_width: 0,
-              visible_height: 0
-            },
-            total_nodes: 0,
-            interactive_elements: Object.keys((serializedState as any).selector_map || {}).length,
-            iframe_count: 0,
-            max_depth: 0
-          }
-        }
-      };
-    } catch (error) {
-      throw error; // Will be handled by handleCaptureError
-    }
-  }
-
-  /**
-   * Clear cached DOM states
-   *
-   * Removes cached DOM snapshots to force fresh captures on next request.
-   * Useful when you know the page has changed and want to bypass the cache.
-   *
-   * Cache entries are automatically invalidated after 30 seconds (CACHE_TTL_MS)
-   * or when the URL changes, but this method allows manual cache management.
-   *
-   * @param tab_id - Optional tab ID to clear cache for specific tab (undefined = clear all caches)
-   *
-   * @example
-   * // Clear cache for specific tab
-   * domTool.clearCache(123);
-   *
-   * @example
-   * // Clear all caches
-   * domTool.clearCache();
-   */
-  clearCache(tab_id?: number): void {
-    if (tab_id !== undefined) {
-      // Clear cache for specific tab
-      const keysToDelete: string[] = [];
-      for (const [key] of this.cache) {
-        if (key.startsWith(`${tab_id}_`)) {
-          keysToDelete.push(key);
-        }
-      }
-      for (const key of keysToDelete) {
-        this.cache.delete(key);
-      }
-      this.log('debug', `Cleared cache for tab ${tab_id}`);
-    } else {
-      // Clear entire cache
-      this.cache.clear();
-      this.log('debug', 'Cleared entire DOM cache');
-    }
-  }
-
-  /**
-   * Validate and parse request
-   */
-  private validateRequest(request: DOMCaptureRequest): DOMCaptureRequest {
-    // Define Zod schema for validation
-    const schema = z.object({
-      tab_id: z.number().int().nonnegative().optional(),
-      include_shadow_dom: z.boolean().optional(),
-      include_iframes: z.boolean().optional(),
-      max_iframe_depth: z.number().int().min(0).max(10).optional(),
-      max_iframe_count: z.number().int().min(0).max(50).optional(),
-      paint_order_filtering: z.boolean().optional(),
-      bbox_filtering: z.boolean().optional(),
-      timeout_ms: z.number().int().min(100).max(30000).optional(),
-      use_cache: z.boolean().optional(),
-      include_timing: z.boolean().optional()
-    });
-
-    try {
-      return schema.parse(request);
-    } catch (error) {
-      if (error instanceof z.ZodError) {
-        const issues = error.issues.map(i => `${i.path.join('.')}: ${i.message}`).join(', ');
-        throw new Error(`Invalid request: ${issues}`);
-      }
-      throw error;
-    }
-  }
-
-  /**
-   * Get cached DOM state if valid
-   */
-  private getCachedState(tabId: number, url: string): SerializedDOMState | null {
-    const cacheKey = this.generateCacheKey(tabId, url);
-    const entry = this.cache.get(cacheKey);
-
-    if (!entry) {
-      return null;
-    }
-
-    // Check TTL
-    const age = Date.now() - entry.timestamp;
-    if (age > this.CACHE_TTL_MS) {
-      this.cache.delete(cacheKey);
-      return null;
-    }
-
-    // Check URL hasn't changed
-    if (entry.url !== url) {
-      this.cache.delete(cacheKey);
-      return null;
-    }
-
-    return entry.state;
-  }
-
-  /**
-   * Cache DOM state with LRU eviction
-   */
-  private cacheState(tabId: number, url: string, state: SerializedDOMState): void {
-    const cacheKey = this.generateCacheKey(tabId, url);
-
-    // LRU eviction - remove oldest entry if at max capacity
-    if (this.cache.size >= this.CACHE_MAX_ENTRIES && !this.cache.has(cacheKey)) {
-      const oldestKey = this.cache.keys().next().value;
-      if (oldestKey) {
-        this.cache.delete(oldestKey);
-      }
-    }
-
-    this.cache.set(cacheKey, {
-      state,
-      timestamp: Date.now(),
-      url
-    });
-  }
-
-  /**
-   * Generate cache key
-   */
-  private generateCacheKey(tabId: number, url: string): string {
-    // Simple key: tab_id + URL hash
-    const urlHash = url.split('?')[0]; // Ignore query params
-    return `${tabId}_${urlHash}`;
-  }
-
-  /**
-   * Handle capture errors
-   */
-  private handleCaptureError(error: any, request: DOMCaptureRequest): DOMCaptureResponse {
-    // Safely extract error message to avoid circular reference issues
-    let errorMessage = 'Unknown error';
-    try {
-      errorMessage = error?.message || String(error);
-    } catch (e) {
-      errorMessage = 'Error with circular references';
-    }
-
-    this.log('error', `DOM capture failed: ${errorMessage}`);
-
-    // Map DOMServiceError to DOMCaptureError
-    if (error instanceof DOMServiceError) {
-      return {
-        success: false,
-        error: {
-          code: this.mapServiceErrorCode(error.code),
-          message: error.message,
-          details: error.details
-        }
-      };
-    }
-
-    // Generic error
-    return {
-      success: false,
-      error: {
-        code: DOMErrorCode.UNKNOWN_ERROR,
-        message: errorMessage,
-        details: { error_type: error?.constructor?.name || 'unknown' }
-      }
-    };
-  }
-
-  /**
-   * Map DOMServiceErrorCode to public error code
-   */
-  private mapServiceErrorCode(code: DOMServiceErrorCode): DOMErrorCode {
-    const mapping: Record<DOMServiceErrorCode, DOMErrorCode> = {
-      [DOMServiceErrorCode.TAB_NOT_FOUND]: DOMErrorCode.TAB_NOT_FOUND,
-      [DOMServiceErrorCode.CONTENT_SCRIPT_NOT_LOADED]: DOMErrorCode.CONTENT_SCRIPT_NOT_LOADED,
-      [DOMServiceErrorCode.TIMEOUT]: DOMErrorCode.TIMEOUT,
-      [DOMServiceErrorCode.PERMISSION_DENIED]: DOMErrorCode.PERMISSION_DENIED,
-      [DOMServiceErrorCode.INVALID_RESPONSE]: DOMErrorCode.UNKNOWN_ERROR,
-      [DOMServiceErrorCode.UNKNOWN_ERROR]: DOMErrorCode.UNKNOWN_ERROR
-    };
-
-    return mapping[code] || DOMErrorCode.UNKNOWN_ERROR;
-  }
-
-  /**
-   * Send DOM capture request to content script with timeout handling
-   *
-   * Implements T027: Message sender with timeout and error handling
-   */
-  private async sendCaptureRequest(
-    tabId: number,
-    request: DOMCaptureRequest,
-    timeoutMs: number
-  ): Promise<DOMCaptureResponseMessage> {
-    // Generate unique request ID for correlation
-    const requestId = `dom_capture_${tabId}_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
-
-    // Build request message
-    const requestMessage: DOMCaptureRequestMessage = {
-      type: 'DOM_CAPTURE_REQUEST',
-      request_id: requestId,
-      options: request,
-      timeout_ms: timeoutMs,
-    };
-
-    // Send message with timeout
-    return new Promise<DOMCaptureResponseMessage>((resolve, reject) => {
-      // Set timeout
-      const timeoutHandle = setTimeout(() => {
-        reject(new DOMServiceError(
-          DOMServiceErrorCode.TIMEOUT,
-          `DOM capture timed out after ${timeoutMs}ms`,
-          { tab_id: tabId, request_id: requestId }
-        ));
-      }, timeoutMs);
-
-      // Send message to content script
-      chrome.tabs.sendMessage(
-        tabId,
-        {
-          type: MessageType.DOM_CAPTURE_REQUEST,
-          payload: requestMessage,
+        data,
+        metadata: {
+          duration,
+          toolName: 'browser_dom',
+          tabId,
+          retryCount: 0,
         },
-        (response) => {
-          clearTimeout(timeoutHandle);
+      };
+    } catch (error) {
+      const duration = Date.now() - startTime;
+      return this.handleError(error, typedRequest.action, tabId, duration);
+    }
+  }
 
-          // Handle chrome.runtime.lastError
-          if (chrome.runtime.lastError) {
-            reject(new DOMServiceError(
-              DOMServiceErrorCode.CONTENT_SCRIPT_NOT_LOADED,
-              chrome.runtime.lastError.message || 'Content script communication failed',
-              { tab_id: tabId, request_id: requestId }
-            ));
-            return;
-          }
+  // ============================================================================
+  // v3.0 Action Execution Methods
+  // ============================================================================
 
-          // Handle response
-          if (!response) {
-            reject(new DOMServiceError(
-              DOMServiceErrorCode.INVALID_RESPONSE,
-              'No response from content script',
-              { tab_id: tabId, request_id: requestId }
-            ));
-            return;
-          }
+  /**
+   * Execute snapshot action
+   */
+  private async executeSnapshot(
+    tabId: number,
+    options?: SerializationOptions
+  ): Promise<SerializedDom> {
+    this.log('debug', 'Executing snapshot', { tabId, options });
 
-          const captureResponse = response as DOMCaptureResponseMessage;
-
-          // Validate response
-          if (captureResponse.request_id !== requestId) {
-            reject(new DOMServiceError(
-              DOMServiceErrorCode.INVALID_RESPONSE,
-              'Response request_id does not match',
-              { tab_id: tabId, expected: requestId, received: captureResponse.request_id }
-            ));
-            return;
-          }
-
-          resolve(captureResponse);
-        }
-      );
+    const response = await chrome.tabs.sendMessage(tabId, {
+      type: MessageType.TAB_COMMAND,
+      payload: {
+        command: 'dom.getSnapshot',
+        args: options || {},
+      },
     });
+
+    if (!response) {
+      throw new Error('No response from content script');
+    }
+
+    // MessageRouter wraps responses in { success: true, data: ... }
+    if (response.success && response.data) {
+      return response.data as SerializedDom;
+    }
+
+    return response as SerializedDom;
+  }
+
+  /**
+   * Execute click action
+   */
+  private async executeClick(
+    tabId: number,
+    nodeId: string,
+    options?: ClickOptions
+  ): Promise<ActionResult> {
+    this.log('debug', 'Executing click', { tabId, nodeId, options });
+
+    const response = await this.executeWithRetry(
+      async () => {
+        return await chrome.tabs.sendMessage(tabId, {
+          type: MessageType.TAB_COMMAND,
+          payload: {
+            command: 'dom.click',
+            args: { nodeId, options: options || {} },
+          },
+        });
+      },
+      3, // maxRetries
+      100 // baseDelayMs
+    );
+
+    if (!response) {
+      throw new Error('No response from content script');
+    }
+
+    // MessageRouter wraps responses in { success: true, data: ... }
+    const result = (response.success && response.data ? response.data : response) as ActionResult;
+
+    // Check if action succeeded
+    if (!result.success) {
+      throw new Error(result.error || 'Click action failed');
+    }
+
+    return result;
+  }
+
+  /**
+   * Execute type action
+   */
+  private async executeType(
+    tabId: number,
+    nodeId: string,
+    text: string,
+    options?: TypeOptions
+  ): Promise<ActionResult> {
+    this.log('debug', 'Executing type', { tabId, nodeId, text, options });
+
+    const response = await this.executeWithRetry(
+      async () => {
+        return await chrome.tabs.sendMessage(tabId, {
+          type: MessageType.TAB_COMMAND,
+          payload: {
+            command: 'dom.type',
+            args: { nodeId, text, options: options || {} },
+          },
+        });
+      },
+      3,
+      100
+    );
+
+    if (!response) {
+      throw new Error('No response from content script');
+    }
+
+    // MessageRouter wraps responses in { success: true, data: ... }
+    const result = (response.success && response.data ? response.data : response) as ActionResult;
+
+    if (!result.success) {
+      throw new Error(result.error || 'Type action failed');
+    }
+
+    return result;
+  }
+
+  /**
+   * Execute keypress action
+   */
+  private async executeKeypress(
+    tabId: number,
+    key: string,
+    options?: KeyPressOptions
+  ): Promise<ActionResult> {
+    this.log('debug', 'Executing keypress', { tabId, key, options });
+
+    const response = await this.executeWithRetry(
+      async () => {
+        return await chrome.tabs.sendMessage(tabId, {
+          type: MessageType.TAB_COMMAND,
+          payload: {
+            command: 'dom.keypress',
+            args: { key, options: options || {} },
+          },
+        });
+      },
+      3,
+      100
+    );
+
+    if (!response) {
+      throw new Error('No response from content script');
+    }
+
+    // MessageRouter wraps responses in { success: true, data: ... }
+    const result = (response.success && response.data ? response.data : response) as ActionResult;
+
+    if (!result.success) {
+      throw new Error(result.error || 'Keypress action failed');
+    }
+
+    return result;
   }
 
   /**
@@ -711,5 +393,116 @@ export class DOMTool extends BaseTool {
     }
 
     throw new Error(`Content script failed to respond after ${maxRetries} attempts`);
+  }
+
+  // ============================================================================
+  // v3.0 Request Validation & Error Handling
+  // ============================================================================
+
+  /**
+   * Validate DOMToolRequest
+   */
+  private validateRequest(request: unknown): string | null {
+    if (!request || typeof request !== 'object') {
+      return 'Request must be an object';
+    }
+
+    const req = request as any;
+
+    // Validate action
+    if (!['snapshot', 'click', 'type', 'keypress'].includes(req.action)) {
+      return `Invalid action: ${req.action}. Must be one of: snapshot, click, type, keypress`;
+    }
+
+    // Validate tab_id if provided
+    if (req.tab_id !== undefined && typeof req.tab_id !== 'number') {
+      return 'tab_id must be a number';
+    }
+
+    // Action-specific validation
+    switch (req.action) {
+      case 'snapshot':
+        return null; // Only action is required
+
+      case 'click':
+        if (!req.node_id || typeof req.node_id !== 'string') {
+          return 'node_id is required for click action';
+        }
+        if (!/^[A-Za-z0-9]{8}$/.test(req.node_id)) {
+          return 'node_id must be 8 alphanumeric characters';
+        }
+        return null;
+
+      case 'type':
+        if (!req.node_id || typeof req.node_id !== 'string') {
+          return 'node_id is required for type action';
+        }
+        if (!/^[A-Za-z0-9]{8}$/.test(req.node_id)) {
+          return 'node_id must be 8 alphanumeric characters';
+        }
+        if (!req.text || typeof req.text !== 'string') {
+          return 'text is required for type action';
+        }
+        return null;
+
+      case 'keypress':
+        if (!req.key || typeof req.key !== 'string') {
+          return 'key is required for keypress action';
+        }
+        return null;
+
+      default:
+        return `Unknown action: ${req.action}`;
+    }
+  }
+
+  /**
+   * Handle errors from action execution
+   */
+  private handleError(
+    error: any,
+    action: string,
+    tabId: number,
+    duration: number
+  ): DOMToolResponse {
+    const errorMessage = error?.message || String(error);
+
+    this.log('error', `DOM tool action failed: ${errorMessage}`, { action, tabId });
+
+    // Map error to code
+    let code = DOMToolErrorCode.UNKNOWN_ERROR;
+    if (errorMessage.includes('not found') || errorMessage.includes('No tab with id')) {
+      code = DOMToolErrorCode.TAB_NOT_FOUND;
+    } else if (errorMessage.includes('Could not establish connection')) {
+      code = DOMToolErrorCode.CONTENT_SCRIPT_NOT_LOADED;
+    } else if (errorMessage.includes('Element') && errorMessage.includes('not found')) {
+      code = DOMToolErrorCode.ELEMENT_NOT_FOUND;
+    } else if (errorMessage.includes('action failed')) {
+      code = DOMToolErrorCode.ACTION_FAILED;
+    } else if (errorMessage.includes('timeout') || errorMessage.includes('timed out')) {
+      code = DOMToolErrorCode.TIMEOUT;
+    } else if (errorMessage.includes('permission')) {
+      code = DOMToolErrorCode.PERMISSION_DENIED;
+    } else if (errorMessage.includes('Invalid action') || errorMessage.includes('is required')) {
+      code = DOMToolErrorCode.VALIDATION_ERROR;
+    }
+
+    return {
+      success: false,
+      error: {
+        code,
+        message: errorMessage,
+        details: {
+          action,
+          tabId,
+          stack: error instanceof Error ? error.stack : undefined,
+        },
+      },
+      metadata: {
+        duration,
+        toolName: 'browser_dom',
+        tabId,
+      },
+    };
   }
 }

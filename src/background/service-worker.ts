@@ -147,6 +147,38 @@ function setupMessageHandlers(): void {
     }
     return { success: false, error: 'Agent not initialized' };
   });
+
+  // Handle stop agent session (from visual effects Stop Agent button)
+  chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
+    if (message.type === 'STOP_AGENT_SESSION') {
+      console.log('[ServiceWorker] Stop agent session requested from visual effects');
+
+      (async () => {
+        try {
+          if (agent) {
+            const session = agent.getSession();
+
+            // Abort all running tasks
+            console.log('[ServiceWorker] Aborting all running tasks...');
+            await session.abortAllTasks('user_stop_button');
+
+            // Reset the session
+            await session.reset();
+
+            console.log('[ServiceWorker] Agent session stopped');
+            sendResponse({ success: true });
+          } else {
+            sendResponse({ success: false, error: 'Agent not initialized' });
+          }
+        } catch (error) {
+          console.error('[ServiceWorker] Failed to stop agent session:', error);
+          sendResponse({ success: false, error: error instanceof Error ? error.message : 'Unknown error' });
+        }
+      })();
+
+      return true; // Keep channel open for async response
+    }
+  });
   
   // Handle storage operations
   router.on(MessageType.STORAGE_GET, async (message) => {

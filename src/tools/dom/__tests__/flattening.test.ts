@@ -58,7 +58,7 @@ describe('DomSnapshot Flattening Logic', () => {
       const snapshot = new DomSnapshot(vdom, mockPageContext, mockStats);
       const serialized = snapshot.serialize();
 
-      expect(serialized.page.body.node_id).toBe(1);
+      expect(serialized.page.body.node_id).toBe(100); // backendNodeId
       expect(serialized.page.body.tag).toBe('button');
       expect(serialized.page.body.role).toBe('button');
       expect(serialized.page.body['aria-label']).toBe('Submit Form');
@@ -85,7 +85,7 @@ describe('DomSnapshot Flattening Logic', () => {
       const snapshot = new DomSnapshot(vdom, mockPageContext, mockStats);
       const serialized = snapshot.serialize();
 
-      expect(serialized.page.body.node_id).toBe(1);
+      expect(serialized.page.body.node_id).toBe(100); // backendNodeId
       expect(serialized.page.body.tag).toBe('div');
       // Non-semantic nodes are kept because they're interactive
     });
@@ -118,7 +118,7 @@ describe('DomSnapshot Flattening Logic', () => {
       const snapshot = new DomSnapshot(vdom, mockPageContext, mockStats);
       const serialized = snapshot.serialize();
 
-      expect(serialized.page.body.node_id).toBe(1);
+      expect(serialized.page.body.node_id).toBe(100); // backendNodeId
       expect(serialized.page.body.tag).toBe('form');
       expect(serialized.page.body.role).toBe('form');
       expect(serialized.page.body.children).toBeDefined();
@@ -154,7 +154,7 @@ describe('DomSnapshot Flattening Logic', () => {
       const serialized = snapshot.serialize();
 
       // Div wrapper removed, button hoisted to root
-      expect(serialized.page.body.node_id).toBe(2); // Button's ID, not div's
+      expect(serialized.page.body.node_id).toBe(101); // Button's backendNodeId, not div's
       expect(serialized.page.body.tag).toBe('button');
       expect(serialized.page.body.role).toBe('button');
     });
@@ -234,7 +234,7 @@ describe('DomSnapshot Flattening Logic', () => {
       const serialized = snapshot.serialize();
 
       // Both wrapper divs removed, button hoisted to root
-      expect(serialized.page.body.node_id).toBe(3);
+      expect(serialized.page.body.node_id).toBe(102); // Button's backendNodeId
       expect(serialized.page.body.tag).toBe('button');
       expect(serialized.page.body['aria-label']).toBe('Deep Button');
     });

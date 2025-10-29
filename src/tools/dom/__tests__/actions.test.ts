@@ -27,6 +27,9 @@ describe('Action Reliability: Click', () => {
         sendCommand: vi.fn(),
         onEvent: {
           addListener: vi.fn()
+        },
+        onDetach: {
+          addListener: vi.fn()
         }
       },
       tabs: {
@@ -111,12 +114,12 @@ describe('Action Reliability: Click', () => {
     const snapshot1 = domService.getCurrentSnapshot();
     expect(snapshot1).not.toBeNull();
 
-    const nodeId = 2;  // nodeId 2 has backendNodeId 100
-    const result = await domService.click(nodeId);
+    const backendNodeId = 100;  // Use backendNodeId from serialized output
+    const result = await domService.click(backendNodeId);
 
     expect(result.success).toBe(true);
     expect(result.actionType).toBe('click');
-    expect(result.nodeId).toBe(nodeId);
+    expect(result.nodeId).toBe(backendNodeId);
 
     // Verify snapshot was invalidated (closed-loop)
     const snapshot2 = domService.getCurrentSnapshot();
@@ -188,9 +191,9 @@ describe('Action Reliability: Click', () => {
     await domService.buildSnapshot();
 
     const snapshot = domService.getCurrentSnapshot()!;
-    const nodeId = 2;  // nodeId 2 has backendNodeId 200
+    const backendNodeId = 200;  // Use backendNodeId from serialized output
 
-    await domService.click(nodeId);
+    await domService.click(backendNodeId);
 
     // Verify backendNodeId was used (assertions in mock above)
   });
@@ -261,9 +264,9 @@ describe('Action Reliability: Click', () => {
     await domService.buildSnapshot();
 
     const snapshot = domService.getCurrentSnapshot()!;
-    const nodeId = 2;  // nodeId 2 has backendNodeId 300
+    const backendNodeId = 300;  // Use backendNodeId from serialized output
 
-    await domService.click(nodeId);
+    await domService.click(backendNodeId);
 
     expect(scrollCalled).toBe(true);
   });
@@ -333,9 +336,9 @@ describe('Action Reliability: Click', () => {
     await domService.buildSnapshot();
 
     const snapshot = domService.getCurrentSnapshot()!;
-    const nodeId = 2;  // nodeId 2 has backendNodeId 400
+    const backendNodeId = 400;  // Use backendNodeId from serialized output
 
-    await domService.click(nodeId);
+    await domService.click(backendNodeId);
   });
 
   it('should send ripple visual effect', async () => {
@@ -393,9 +396,9 @@ describe('Action Reliability: Click', () => {
     await domService.buildSnapshot();
 
     const snapshot = domService.getCurrentSnapshot()!;
-    const nodeId = 2;  // nodeId 2 has backendNodeId 500
+    const backendNodeId = 500;  // Use backendNodeId from serialized output
 
-    const result = await domService.click(nodeId);
+    const result = await domService.click(backendNodeId);
 
     // Verify visual effect sent
     expect(mockChrome.tabs.sendMessage).toHaveBeenCalledWith(
@@ -464,8 +467,8 @@ describe('Action Reliability: Click', () => {
     const snapshot1 = domService.getCurrentSnapshot();
     expect(snapshot1).not.toBeNull();
 
-    const nodeId = 2;  // nodeId 2 has backendNodeId 600
-    const result = await domService.click(nodeId);
+    const backendNodeId = 600;  // Use backendNodeId from serialized output
+    const result = await domService.click(backendNodeId);
 
     expect(result.success).toBe(false);
     expect(result.error).toBeDefined();
@@ -502,8 +505,8 @@ describe('Action Reliability: Click', () => {
     const domService = await DomService.forTab(mockTabId);
     await domService.buildSnapshot();
 
-    // Attempt click with non-existent nodeId
-    const result = await domService.click('node_999');
+    // Attempt click with non-existent backendNodeId
+    const result = await domService.click(999);
 
     expect(result.success).toBe(false);
     expect(result.error).toContain('not found');
@@ -565,9 +568,9 @@ describe('Action Reliability: Click', () => {
     await domService.buildSnapshot();
 
     const snapshot = domService.getCurrentSnapshot()!;
-    const nodeId = 2;  // nodeId 2 has backendNodeId 700
+    const backendNodeId = 700;  // Use backendNodeId from serialized output
 
-    const result = await domService.click(nodeId);
+    const result = await domService.click(backendNodeId);
 
     expect(result.success).toBe(true);
 
@@ -589,6 +592,9 @@ describe('Action Reliability: Type', () => {
         detach: vi.fn().mockResolvedValue(undefined),
         sendCommand: vi.fn(),
         onEvent: {
+          addListener: vi.fn()
+        },
+        onDetach: {
           addListener: vi.fn()
         }
       },
@@ -667,8 +673,8 @@ describe('Action Reliability: Type', () => {
     const snapshot1 = domService.getCurrentSnapshot();
     expect(snapshot1).not.toBeNull();
 
-    const nodeId = 2;  // nodeId 2 has backendNodeId 100
-    const result = await domService.type(nodeId, 'test@example.com');
+    const backendNodeId = 100;  // Use backendNodeId from serialized output
+    const result = await domService.type(backendNodeId, 'test@example.com');
 
     expect(result.success).toBe(true);
     expect(result.actionType).toBe('type');
@@ -739,9 +745,9 @@ describe('Action Reliability: Type', () => {
     await domService.buildSnapshot();
 
     const snapshot = domService.getCurrentSnapshot()!;
-    const nodeId = 2;  // nodeId 2 has backendNodeId 200
+    const backendNodeId = 200;  // Use backendNodeId from serialized output
 
-    await domService.type(nodeId, 'hello');
+    await domService.type(backendNodeId, 'hello');
 
     expect(focusCalled).toBe(true);
   });
@@ -800,9 +806,9 @@ describe('Action Reliability: Type', () => {
     await domService.buildSnapshot();
 
     const snapshot = domService.getCurrentSnapshot()!;
-    const nodeId = 2;  // nodeId 2 has backendNodeId 300
+    const backendNodeId = 300;  // Use backendNodeId from serialized output
 
-    await domService.type(nodeId, 'new value');
+    await domService.type(backendNodeId, 'new value');
 
     // Verify Ctrl+A was sent
     const ctrlA = keyEvents.find(e => e.key === 'a' && e.modifiers === 2);
@@ -865,9 +871,9 @@ describe('Action Reliability: Type', () => {
     await domService.buildSnapshot();
 
     const snapshot = domService.getCurrentSnapshot()!;
-    const nodeId = 2;  // nodeId 2 has backendNodeId 400
+    const backendNodeId = 400;  // Use backendNodeId from serialized output
 
-    await domService.type(nodeId, 'Hello, World! 🎉');
+    await domService.type(backendNodeId, 'Hello, World! 🎉');
   });
 
   it('should press Enter if text ends with newline', async () => {
@@ -924,9 +930,9 @@ describe('Action Reliability: Type', () => {
     await domService.buildSnapshot();
 
     const snapshot = domService.getCurrentSnapshot()!;
-    const nodeId = 2;  // nodeId 2 has backendNodeId 500
+    const backendNodeId = 500;  // Use backendNodeId from serialized output
 
-    await domService.type(nodeId, 'search query\n');
+    await domService.type(backendNodeId, 'search query\n');
 
     // Verify Enter was pressed after text insertion
     const enterKey = keyEvents.find(e => e.key === 'Enter');
@@ -981,9 +987,9 @@ describe('Action Reliability: Type', () => {
     await domService.buildSnapshot();
 
     const snapshot1 = domService.getCurrentSnapshot();
-    const nodeId = 2;  // nodeId 2 has backendNodeId 600
+    const backendNodeId = 600;  // Use backendNodeId from serialized output
 
-    const result = await domService.type(nodeId, 'test');
+    const result = await domService.type(backendNodeId, 'test');
 
     expect(result.success).toBe(false);
     expect(result.error).toContain('not focusable');
@@ -1007,6 +1013,9 @@ describe('Action Reliability: Keypress', () => {
         detach: vi.fn().mockResolvedValue(undefined),
         sendCommand: vi.fn(),
         onEvent: {
+          addListener: vi.fn()
+        },
+        onDetach: {
           addListener: vi.fn()
         }
       },
@@ -1172,6 +1181,9 @@ describe('Action Reliability: Scroll', () => {
         detach: vi.fn().mockResolvedValue(undefined),
         sendCommand: vi.fn(),
         onEvent: {
+          addListener: vi.fn()
+        },
+        onDetach: {
           addListener: vi.fn()
         }
       },

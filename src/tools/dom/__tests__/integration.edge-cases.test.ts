@@ -22,6 +22,9 @@ describe('DomService Edge Cases', () => {
   beforeEach(() => {
     mockTabId = 123;
 
+    // Clear singleton instances before each test
+    (DomService as any).instances.clear();
+
     // Mock chrome APIs
     global.chrome = {
       debugger: {
@@ -46,16 +49,26 @@ describe('DomService Edge Cases', () => {
 
   afterEach(async () => {
     // Clean up instances
-    const service = await DomService.forTab(mockTabId);
-    await service.detach();
+    try {
+      const instances = (DomService as any).instances;
+      if (instances.has(mockTabId)) {
+        const service = instances.get(mockTabId);
+        await service.detach();
+      }
+    } catch (error) {
+      // Ignore cleanup errors
+    }
   });
 
   describe('T077: X-Frame-Options DENY Detection', () => {
     it('should detect and report X-Frame-Options DENY errors', async () => {
       const sendCommand = vi.fn()
-        .mockResolvedValueOnce(undefined) // DOM.enable
-        .mockResolvedValueOnce(undefined) // Accessibility.enable
-        .mockRejectedValueOnce(new Error('Frame with origin "https://blocked.com" not found')); // DOM.getDocument fails
+        .mockResolvedValueOnce(undefined) // DOM.enable (in attach)
+        .mockResolvedValueOnce(undefined) // Accessibility.enable (in attach)
+        .mockRejectedValueOnce(new Error('Frame with origin "https://blocked.com" not found')) // DOM.getDocument fails
+        .mockResolvedValueOnce(null) // Accessibility.getFullAXTree (ignored)
+        .mockRejectedValueOnce(new Error('Frame with origin "https://blocked.com" not found')) // DOM.getDocument fails (second call)
+        .mockResolvedValueOnce(null); // Accessibility.getFullAXTree (ignored, second call)
 
       (global.chrome.debugger.sendCommand as any) = sendCommand;
 
@@ -165,7 +178,7 @@ describe('DomService Edge Cases', () => {
       const service = await DomService.forTab(mockTabId);
       await service.buildSnapshot();
 
-      const result = await service.click(1);
+      const result = await service.click(100); // Use backendNodeId
 
       expect(result.success).toBe(false);
       expect(result.error).toContain('ELEMENT_NOT_VISIBLE');
@@ -174,12 +187,17 @@ describe('DomService Edge Cases', () => {
 
   describe('T081: Debugger Conflict Detection', () => {
     it('should detect when DevTools is already attached', async () => {
-      (global.chrome.debugger.attach as any).mockRejectedValueOnce(
+      (global.chrome.debugger.attach as any).mockRejectedValue(
         new Error('Cannot attach to this target because it already attached')
       );
 
-      await expect(DomService.forTab(mockTabId)).rejects.toThrow('ALREADY_ATTACHED');
-      await expect(DomService.forTab(mockTabId)).rejects.toThrow('DevTools is open');
+      try {
+        await DomService.forTab(mockTabId);
+        expect.fail('Should have thrown error');
+      } catch (error: any) {
+        expect(error.message).toContain('ALREADY_ATTACHED');
+        expect(error.message).toContain('DevTools is open');
+      }
     });
   });
 
@@ -224,7 +242,7 @@ describe('DomService Edge Cases', () => {
       const service = await DomService.forTab(mockTabId);
       await service.buildSnapshot();
 
-      const result = await service.click(1);
+      const result = await service.click(100); // Use backendNodeId
 
       expect(result.success).toBe(false);
       expect(result.error).toContain('SVG_CLICK_NOT_SUPPORTED');

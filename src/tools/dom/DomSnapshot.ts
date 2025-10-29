@@ -16,6 +16,7 @@ export class DomSnapshot implements IDomSnapshot {
 
   private _serialized?: SerializedDom;
   private _nodeMap?: Map<number, VirtualNode>;
+  private _backendNodeMap?: Map<number, VirtualNode>;
 
   constructor(
     virtualDom: VirtualNode,
@@ -46,10 +47,34 @@ export class DomSnapshot implements IDomSnapshot {
   }
 
   /**
+   * Build a flat map of backendNodeId -> VirtualNode for quick lookups
+   */
+  private buildBackendNodeMap(): Map<number, VirtualNode> {
+    if (this._backendNodeMap) return this._backendNodeMap;
+
+    this._backendNodeMap = new Map();
+    const traverse = (node: VirtualNode) => {
+      this._backendNodeMap!.set(node.backendNodeId, node);
+      if (node.children) {
+        node.children.forEach(traverse);
+      }
+    };
+    traverse(this.virtualDom);
+    return this._backendNodeMap;
+  }
+
+  /**
    * Get VirtualNode by CDP nodeId
    */
   getNode(nodeId: number): VirtualNode | null {
     return this.buildNodeMap().get(nodeId) ?? null;
+  }
+
+  /**
+   * Get VirtualNode by backendNodeId (stable ID used in serialization)
+   */
+  getNodeByBackendId(backendNodeId: number): VirtualNode | null {
+    return this.buildBackendNodeMap().get(backendNodeId) ?? null;
   }
 
   /**
@@ -77,11 +102,6 @@ export class DomSnapshot implements IDomSnapshot {
 
     // Build flattened tree structure (Pass 2: Remove structural junk)
     const body = this.flattenNode(this.virtualDom);
-
-    // test>>
-    console.log('[DomSnapshot] Serialized Tree:');
-    console.log(body);
-    // test<<
 
     this._serialized = {
       page: {
@@ -133,7 +153,7 @@ export class DomSnapshot implements IDomSnapshot {
       // Return a minimal structural node to maintain grouping
       if (flattenedChildren.length > 1) {
         return {
-          node_id: node.nodeId,
+          node_id: node.backendNodeId,
           tag: node.localName || node.nodeName.toLowerCase(),
           children: flattenedChildren
         };
@@ -174,8 +194,9 @@ export class DomSnapshot implements IDomSnapshot {
     }
 
     // Build base node
+    // Use backendNodeId (stable across snapshots) instead of nodeId (transient)
     const serializedNode: SerializedNode = {
-      node_id: node.nodeId,
+      node_id: node.backendNodeId,
       tag: node.localName || node.nodeName.toLowerCase()
     };
 

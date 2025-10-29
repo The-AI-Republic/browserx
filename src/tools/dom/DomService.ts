@@ -238,10 +238,6 @@ export class DomService {
     };
 
     const virtualDom = buildVirtualTree(domTree.root);
-    // test>>
-    console.log('[DomService Test] Virtual DOM Tree:');
-    console.log(JSON.stringify(virtualDom, null, 2));
-    // test<<
 
     if (!virtualDom) {
       throw new Error('SNAPSHOT_FAILED: Could not build tree');
@@ -371,7 +367,7 @@ export class DomService {
   }
 
   // Action methods (T037-T045 will implement these)
-  async click(nodeId: number): Promise<ActionResult> {
+  async click(backendNodeId: number): Promise<ActionResult> {
     const start = Date.now();
 
     try {
@@ -379,9 +375,10 @@ export class DomService {
         throw new Error('NODE_NOT_FOUND: No snapshot available');
       }
 
-      const backendNodeId = this.currentSnapshot.getBackendId(nodeId);
-      if (!backendNodeId) {
-        throw new Error(`NODE_NOT_FOUND: Node ${nodeId} not found in snapshot`);
+      // Verify node exists in snapshot (backendNodeId comes from serialized output)
+      const node = this.currentSnapshot.getNodeByBackendId(backendNodeId);
+      if (!node) {
+        throw new Error(`NODE_NOT_FOUND: Node ${backendNodeId} not found in snapshot`);
       }
 
       // Get box model for coordinates
@@ -391,7 +388,6 @@ export class DomService {
       } catch (error: any) {
         // T083: SVG elements don't have box models - try getting content quads instead
         if (error.message?.includes('Could not compute box model')) {
-          const node = this.currentSnapshot.getNode(nodeId);
           if (node?.nodeName?.toLowerCase() === 'svg' || node?.nodeName?.toLowerCase().includes('svg')) {
             console.warn('[DomService] SVG element detected - using alternative click method');
             // For SVG, try to get bounding rect via JavaScript
@@ -449,7 +445,7 @@ export class DomService {
           scrollChanged: false,
           valueChanged: false
         },
-        nodeId,
+        nodeId: backendNodeId,
         actionType: 'click',
         timestamp: new Date().toISOString()
       };
@@ -469,14 +465,14 @@ export class DomService {
           scrollChanged: false,
           valueChanged: false
         },
-        nodeId,
+        nodeId: backendNodeId,
         actionType: 'click',
         timestamp: new Date().toISOString()
       };
     }
   }
 
-  async type(nodeId: number, text: string): Promise<ActionResult> {
+  async type(backendNodeId: number, text: string): Promise<ActionResult> {
     const start = Date.now();
 
     try {
@@ -484,9 +480,10 @@ export class DomService {
         throw new Error('NODE_NOT_FOUND: No snapshot available');
       }
 
-      const backendNodeId = this.currentSnapshot.getBackendId(nodeId);
-      if (!backendNodeId) {
-        throw new Error(`NODE_NOT_FOUND: Node ${nodeId} not found`);
+      // Verify node exists in snapshot
+      const node = this.currentSnapshot.getNodeByBackendId(backendNodeId);
+      if (!node) {
+        throw new Error(`NODE_NOT_FOUND: Node ${backendNodeId} not found`);
       }
 
       // Focus element
@@ -532,7 +529,7 @@ export class DomService {
           valueChanged: true,
           newValue: text
         },
-        nodeId,
+        nodeId: backendNodeId,
         actionType: 'type',
         timestamp: new Date().toISOString()
       };
@@ -552,20 +549,20 @@ export class DomService {
           scrollChanged: false,
           valueChanged: false
         },
-        nodeId,
+        nodeId: backendNodeId,
         actionType: 'type',
         timestamp: new Date().toISOString()
       };
     }
   }
 
-  async scroll(nodeId: number | 'window', direction: 'up' | 'down'): Promise<ActionResult> {
+  async scroll(backendNodeId: number | 'window', direction: 'up' | 'down'): Promise<ActionResult> {
     const start = Date.now();
 
     try {
       const deltaY = direction === 'down' ? 500 : -500;
 
-      if (nodeId === 'window') {
+      if (backendNodeId === 'window') {
         // Scroll page
         await this.sendCommand('Input.dispatchMouseEvent', {
           type: 'mouseWheel',
@@ -580,9 +577,10 @@ export class DomService {
           throw new Error('NODE_NOT_FOUND: No snapshot available');
         }
 
-        const backendNodeId = this.currentSnapshot.getBackendId(nodeId);
-        if (!backendNodeId) {
-          throw new Error(`NODE_NOT_FOUND: Node ${nodeId} not found`);
+        // Verify node exists in snapshot
+        const node = this.currentSnapshot.getNodeByBackendId(backendNodeId);
+        if (!node) {
+          throw new Error(`NODE_NOT_FOUND: Node ${backendNodeId} not found`);
         }
 
         const boxModel = await this.sendCommand<any>('DOM.getBoxModel', { backendNodeId });
@@ -613,7 +611,7 @@ export class DomService {
           scrollChanged: true,
           valueChanged: false
         },
-        nodeId: nodeId === 'window' ? NODE_ID_WINDOW : nodeId,
+        nodeId: backendNodeId === 'window' ? NODE_ID_WINDOW : backendNodeId,
         actionType: 'scroll',
         timestamp: new Date().toISOString()
       };
@@ -633,7 +631,7 @@ export class DomService {
           scrollChanged: false,
           valueChanged: false
         },
-        nodeId: nodeId === 'window' ? NODE_ID_WINDOW : nodeId,
+        nodeId: backendNodeId === 'window' ? NODE_ID_WINDOW : backendNodeId,
         actionType: 'scroll',
         timestamp: new Date().toISOString()
       };

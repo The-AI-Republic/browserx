@@ -44,6 +44,9 @@ describe('Integration: Cross-Origin Iframe Access', () => {
         sendCommand: vi.fn(),
         onEvent: {
           addListener: vi.fn()
+        },
+        onDetach: {
+          addListener: vi.fn()
         }
       },
       tabs: {
@@ -399,13 +402,13 @@ describe('Integration: Cross-Origin Iframe Access', () => {
     const domService = await DomService.forTab(mockTabId);
     await domService.buildSnapshot();
 
-    // Get nodeId for iframe button
+    // Get backendNodeId for iframe button
     const snapshot = domService.getCurrentSnapshot()!;
-    const nodeId = 3;  // nodeId 3 (button inside iframe) has backendNodeId 100
-    expect(nodeId).toBeTruthy();
+    const backendNodeId = 100;  // Use backendNodeId from serialized output (button inside iframe)
+    expect(backendNodeId).toBeTruthy();
 
     // Click iframe button
-    const result = await domService.click(nodeId);
+    const result = await domService.click(backendNodeId);
 
     // Verify success
     if (!result.success) {

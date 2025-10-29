@@ -87,7 +87,7 @@ describe('DomSnapshot', () => {
     const buttonNode = allNodes.find(n => n.tag === 'button');
 
     expect(buttonNode).toBeDefined();
-    expect(buttonNode?.node_id).toBe(2); // nodeId is now a number
+    expect(buttonNode?.node_id).toBe(101); // backendNodeId (stable ID)
     expect(buttonNode?.role).toBe('button');
     expect(buttonNode?.['aria-label']).toBe('Submit');
   });

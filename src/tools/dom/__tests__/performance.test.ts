@@ -40,6 +40,9 @@ describe('Performance: Snapshot Caching', () => {
         sendCommand: vi.fn(),
         onEvent: {
           addListener: vi.fn()
+        },
+        onDetach: {
+          addListener: vi.fn()
         }
       },
       tabs: {
@@ -475,11 +478,11 @@ describe('Performance: Snapshot Caching', () => {
     const snapshot1 = domService.getCurrentSnapshot();
     expect(snapshot1).not.toBeNull();
 
-    const nodeId = 2;  // nodeId 2 has backendNodeId 100
-    expect(nodeId).toBeTruthy();
+    const backendNodeId = 100;  // Use backendNodeId from serialized output
+    expect(backendNodeId).toBeTruthy();
 
     // Attempt click (will fail due to getBoxModel error)
-    const result = await domService.click(nodeId);
+    const result = await domService.click(backendNodeId);
 
     expect(result.success).toBe(false);
 

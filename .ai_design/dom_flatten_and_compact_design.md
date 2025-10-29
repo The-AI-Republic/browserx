@@ -17,12 +17,11 @@ This document proposes a **deterministic, single-pass serialization pipeline** t
 
 **Proposed Solution**: Single-pass pipeline (Signal Filtering → Structure Simplification → Payload Optimization) that removes only noise and unnecessary structure, achieving 30-50% token reduction with **zero content loss**.
 
-**Design Philosophy Shift**:
-- **OLD APPROACH**: Maximum compression → summarize repetitions → on-demand expansion
-- **NEW APPROACH**: Fidelity-first → preserve all visible content → remove only structural noise
+**Design Philosophy**:
+- Fidelity-first → preserve all visible content → remove structural noise and invisible (for user from human perspective) elements
 
 **Expected Impact**:
-- 30-50% reduction in token consumption (modest but safe)
+- 30-50% reduction in token consumption compared to current implementation
 - **100% content fidelity** (all user-visible elements preserved)
 - Deterministic output (no adaptive budgets or iterations)
 - Faster serialization (<50ms, single pass)
@@ -185,7 +184,7 @@ The optimization must achieve **BOTH** goals:
 
 ### Core Principles
 
-This design adopts a **fidelity-first lossless compaction** approach, fundamentally different from aggressive compression strategies:
+This design adopts a **fidelity-first lossless compaction** approach that enhances the current implementation while maintaining its core philosophy:
 
 #### 1. **Preserve All User-Visible Content**
 
@@ -235,22 +234,21 @@ This design adopts a **fidelity-first lossless compaction** approach, fundamenta
 - ✅ Prune non-semantic attributes (class, data-*, style)
 - ❌ Do NOT remove or summarize user-visible content
 
-**Expected token reduction**: 30-50% (modest but safe)
-- Lower than aggressive compression (60-85%)
-- Higher fidelity and interaction accuracy (≥99% vs ≥95%)
+**Expected token reduction**: 30-50%
+- Higher fidelity and interaction accuracy (≥99%)
 - Predictable and reliable
 
-### Design Trade-offs
+### Comparison with Current Implementation
 
-| Aspect | Aggressive Compression (v2.1) | Fidelity-First (v3.0) |
-|--------|------------------------------|----------------------|
-| Token Reduction | 60-85% | 30-50% |
-| Content Fidelity | Partial (with expansion API) | 100% (all visible content) |
+| Aspect | Current Implementation | Proposed Design (v3.0) |
+|--------|------------------------|------------------------|
+| Token Reduction | Baseline (0%) | 30-50% |
+| Content Fidelity | 100% (all visible content) | 100% (all visible content) |
 | Interaction Accuracy | ≥95% | ≥99% |
-| Complexity | High (3 stages, iterations, expansion API) | Low (single pass, no API) |
-| Performance | ~100ms (multiple iterations) | <50ms (single pass) |
-| Deterministic | No (budget-driven) | Yes (fixed rules) |
-| Risk of Content Loss | Medium-High | Very Low |
+| Complexity | Low (two-pass) | Low (single pass, no API) |
+| Performance | ~50-200ms (cold build) | <50ms (single pass) |
+| Deterministic | Yes | Yes (fixed rules) |
+| Risk of Content Loss | Very Low | Very Low |
 
 ---
 
@@ -974,11 +972,11 @@ function bucketMetadata(children: SerializedNode[]): any {
 - Numeric compaction (arrays instead of objects)
 - Metadata bucketing (collection-level states)
 
-**Key Difference from Aggressive Compression**:
-- ✅ Lower reduction (30-50% vs 60-85%)
-- ✅ Higher fidelity (100% vs partial)
-- ✅ Higher accuracy (≥99% vs ≥95%)
-- ✅ Simpler implementation (no expansion API needed)
+**Key Improvements Over Current Implementation**:
+- ✅ 30-50% token reduction (vs baseline 0%)
+- ✅ Maintains 100% content fidelity
+- ✅ Higher accuracy target (≥99% vs ≥95%)
+- ✅ Simple implementation (no expansion API needed)
 
 ---
 
@@ -1240,7 +1238,7 @@ function parseSerializedDom(dom: SerializedDom): void {
 #### M1: Token Reduction Rate
 ```
 Token Reduction = 1 - (Compressed Tokens / Original Tokens)
-Target: 40-50% (baseline), 60-70% (adaptive), 75-85% (aggressive)
+Target: 30-50% (fidelity-first lossless compaction)
 ```
 
 #### M2: Interaction Success Rate
@@ -1892,4 +1890,5 @@ This design proposes a **comprehensive, three-stage serialization pipeline** tha
 | 1.0 | 2025-10-28 | Initial design proposal | AI Design Assistant |
 | 2.0 | 2025-10-28 | Merged with Codex design, added three-stage pipeline, repetition detection, budget manager | AI Design Assistant |
 | 2.1 | 2025-10-29 | **Critical improvements based on review feedback**: (1) Moved Expansion API from future enhancements to MVP (Phase 4), (2) Added one-pass estimation and safety margin to Budget Manager to mitigate performance risk, (3) Enhanced repetition detection signature to include children structure, (4) Lowered semantic container threshold from 2+ to 1+ interactive descendants, (5) Added explicit ID mapping persistence requirement, (6) Added end-to-end agent testing requirement for M2 validation | AI Design Assistant |
+| 3.0 | 2025-10-29 | **Removed Aggressive Compression comparisons**: Reframed document to compare proposed design with current implementation in src/tools/dom rather than an alternative aggressive compression approach. Updated all trade-off tables and metrics to focus on improvements over current implementation. | AI Design Assistant |
 

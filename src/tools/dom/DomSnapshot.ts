@@ -111,27 +111,39 @@ export class DomSnapshot implements IDomSnapshot {
     // Store IdRemapper for later use
     this._idRemapper = result.idRemapper;
 
+    // Diagnostic logging for debugging empty snapshots
+    console.log(`[DomSnapshot] Pipeline metrics:`, {
+      totalNodes: result.metrics.totalNodes,
+      serializedNodes: result.metrics.serializedNodes,
+      filteredNodes: result.metrics.filteredNodes,
+      interactiveNodes: result.metrics.interactiveNodes
+    });
+
     // T031: Build flattened tree structure from pipeline result with v3 schema
     const body = this.flatternNode(result.tree, opts);
 
+    // Safety check: if body is null or has no kids, log detailed diagnostics
+    if (!body || (body.kids && body.kids.length === 0)) {
+      console.warn(`[DomSnapshot] WARNING: Serialization produced empty/minimal body!`, {
+        bodyIsNull: !body,
+        bodyTag: body?.tag,
+        kidsLength: body?.kids?.length || 0,
+        url: this.pageContext.url,
+        totalNodesBeforeFiltering: result.metrics.totalNodes,
+        serializedNodesAfterFiltering: result.metrics.serializedNodes,
+        interactiveNodes: result.metrics.interactiveNodes,
+        suggestion: 'Page may be loading asynchronously, or all elements were filtered as non-interactive. Consider waiting for page load or checking element classification.'
+      });
+    }
+
     // T031: Build v3 SerializedDom with normalized field names
     this._serialized = {
-      version: 3, // T030: Schema version
       page: {
         context: {
           url: this.pageContext.url,
           title: this.pageContext.title
         },
-        body,
-        // T031: Include compaction metrics (optional, for debugging)
-        ...(result.metrics && {
-          metrics: {
-            total_nodes: result.metrics.totalNodes,
-            serialized_nodes: result.metrics.serializedNodes,
-            token_reduction_rate: result.metrics.tokenReductionRate,
-            compaction_score: result.metrics.compactionScore
-          }
-        })
+        body
         // Note: Collection-level states from MetadataBucketer would go here
         // This is deferred to future optimization as it requires refactoring
         // the serialization to separate node data from state data
@@ -141,6 +153,8 @@ export class DomSnapshot implements IDomSnapshot {
     this.stats.serializationDuration = Date.now() - start;
 
     // test>>
+    console.log("[DomSnapshot Test] Virtual DOM:", JSON.stringify(this.virtualDom, null, 2));
+    console.log("[DomSnapshot Test] Tree Before Flattern:", JSON.stringify(result.tree, null, 2));
     console.log("[DomSnapshot Test] SerializedDom:", JSON.stringify(this._serialized, null, 2));
     // <<test
 
@@ -190,6 +204,24 @@ export class DomSnapshot implements IDomSnapshot {
           tag: node.localName || node.nodeName.toLowerCase(),
           kids: flattenedChildren
         };
+      }
+
+      // FIX: If all children were filtered out (flattenedChildren.length === 0),
+      // preserve structural root/body nodes as placeholders to prevent tree collapse
+      if (flattenedChildren.length === 0) {
+        const tag = node.localName || node.nodeName.toLowerCase();
+        // Only preserve critical structural nodes when empty (html, body, main)
+        if (tag === 'html' || tag === 'body' || tag === '#document' || tag === 'main') {
+          const sequentialId = this._idRemapper?.toSequentialId(node.backendNodeId) ?? node.backendNodeId;
+          console.warn(`[DomSnapshot] All children filtered out for <${tag}>. Returning placeholder node.`);
+          return {
+            node_id: sequentialId,
+            tag,
+            kids: [] // Empty kids array to indicate no interactive elements found
+          };
+        }
+        // For other structural nodes with no children after filtering, discard them
+        return null as any;
       }
     }
 

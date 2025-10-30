@@ -84,9 +84,6 @@ export interface SnapshotStats {
  * @version 3.0.0 - T030: Normalized field names with snake_case convention
  */
 export interface SerializedDom {
-  /** Schema version for compatibility tracking */
-  version: number;
-
   page: {
     context: {
       url: string;

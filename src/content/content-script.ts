@@ -1,19 +1,14 @@
 /**
  * Lightweight content script used by Browserx.
- * Provides DOM Tool v3.0 (snapshot, click, type, keypress).
+ * Provides visual effects for DOM operations performed via CDP.
  */
 
 import { MessageRouter, MessageType } from '../core/MessageRouter';
 
-// NEW DOM TOOL v3.0
-import { DomTool } from './dom';
-import type { DomToolConfig, SerializationOptions } from '../types/domTool';
-
 // VISUAL EFFECTS v3.0
-import VisualEffectController from './dom/ui_effect/VisualEffectController.svelte';
+import VisualEffectController from './ui_effect/VisualEffectController.svelte';
 
 let router: MessageRouter | null = null;
-let domTool: DomTool | null = null;
 let visualEffectController: any = null;
 let visualEffectShadowHost: HTMLElement | null = null;
 
@@ -74,55 +69,25 @@ function initializeVisualEffects(): void {
 }
 
 /**
- * Get or create DomTool singleton instance
- * NEW DOM TOOL v3.0
- * Lazy initialization: Creates DomTool and visual effects on first use
+ * Initialize visual effects explicitly
+ * This command allows the agent to manually initialize visual effects in the target tab.
  */
-function getDomTool(config?: Partial<DomToolConfig>): DomTool {
-	if (!domTool) {
-		// Initialize visual effects first (if not already initialized)
+function initVisualEffects() {
+	try {
 		if (!visualEffectController) {
 			initializeVisualEffects();
 		}
 
-		domTool = new DomTool({
-			autoInvalidate: true,
-			mutationThrottle: 500,
-			maxInteractiveElements: 400,
-			maxTreeDepth: 50,
-			captureIframes: true,
-			captureShadowDom: true,
-			snapshotTimeout: 30000,
-			...config,
-		});
-		console.log('[Browserx] DomTool v3.0 initialized');
-
-		// Emit agent start event for visual effects (T024)
-		domTool.emitAgentStart();
-	}
-	return domTool;
-}
-
-/**
- * Initialize DomTool explicitly
- * This command allows the agent to manually initialize DomTool and visual effects
- * in the target tab before performing any actions.
- */
-function initDomTool(config?: Partial<DomToolConfig>) {
-	try {
-		const tool = getDomTool(config);
-
 		return {
 			success: true,
-			message: 'DomTool initialized successfully',
+			message: 'Visual effects initialized successfully',
 			tabId: getTabId(),
 			initialized: {
-				domTool: !!domTool,
 				visualEffects: !!visualEffectController,
 			}
 		};
 	} catch (error) {
-		console.error('[Browserx] Failed to initialize DomTool:', error);
+		console.error('[Browserx] Failed to initialize visual effects:', error);
 		throw error;
 	}
 }
@@ -138,170 +103,26 @@ function setupMessageHandlers(): void {
 		initLevel: getInitLevel(),
 		readyState: document.readyState,
 		version: '3.0.0',
-		capabilities: ['dom_tool_v3']
+		capabilities: ['visual_effects']
 	}));
 
 	router.on(MessageType.TAB_COMMAND, async (message) => {
 		const { command, args } = message.payload;
 
 		// INITIALIZATION COMMANDS
-		if (command === 'init.domtool') {
-			return initDomTool(args);
+		if (command === 'init.visualEffects') {
+			return initVisualEffects();
 		}
 
-		// NEW DOM TOOL (v3.0)
-		if (command === 'dom.getSnapshot') {
-			return domGetSnapshot(args as SerializationOptions);
-		}
-
-		if (command === 'dom.click') {
-			const { nodeId, options } = args as { nodeId: string; options?: any };
-			return domClick(nodeId, options);
-		}
-
-		if (command === 'dom.type') {
-			const { nodeId, text, options } = args as { nodeId: string; text: string; options?: any };
-			return domType(nodeId, text, options);
-		}
-
-		if (command === 'dom.keypress') {
-			const { key, options } = args as { key: string; options?: any };
-			return domKeypress(key, options);
-		}
-
-		if (command === 'dom.buildSnapshot') {
-			const { trigger } = args as { trigger?: 'action' | 'navigation' | 'manual' | 'mutation' };
-			return domBuildSnapshot(trigger);
+		// SHOW VISUAL EFFECT (for CDP-based DOM actions)
+		if (command === 'visual.showEffect') {
+			const { type, x, y } = args as { type: string; x: number; y: number };
+			// Visual effects are handled via custom events dispatched by DomTool (CDP-based)
+			return { success: true };
 		}
 
 		throw new Error(`Unknown command: ${command}`);
 	});
-}
-
-/**
- * Get serialized DOM snapshot for LLM consumption
- */
-async function domGetSnapshot(options?: SerializationOptions) {
-	try {
-		const tool = getDomTool();
-		const serialized = await tool.get_serialized_dom(options);
-
-		console.log('[Browserx] DOM snapshot generated', {
-			nodes: serialized.page.body ? countNodes(serialized.page.body) : 0,
-			iframes: serialized.page.iframes?.length || 0,
-			shadowDoms: serialized.page.shadowDoms?.length || 0,
-		});
-
-		return serialized;
-	} catch (error) {
-		console.error('[Browserx] Failed to get DOM snapshot:', error);
-		throw error;
-	}
-}
-
-/**
- * Execute click action on an element
- */
-async function domClick(nodeId: string, options?: any) {
-	try {
-		const tool = getDomTool();
-		const result = await tool.click(nodeId, options);
-
-		console.log('[Browserx] Click executed', {
-			nodeId,
-			success: result.success,
-			duration: result.duration,
-			changes: result.changes,
-		});
-
-		return result;
-	} catch (error) {
-		console.error('[Browserx] Click failed:', error);
-		throw error;
-	}
-}
-
-/**
- * Execute type action on an element
- */
-async function domType(nodeId: string, text: string, options?: any) {
-	try {
-		const tool = getDomTool();
-		const result = await tool.type(nodeId, text, options);
-
-		console.log('[Browserx] Type executed', {
-			nodeId,
-			text: text.substring(0, 50),
-			success: result.success,
-			duration: result.duration,
-			valueChanged: result.changes.valueChanged,
-		});
-
-		return result;
-	} catch (error) {
-		console.error('[Browserx] Type failed:', error);
-		throw error;
-	}
-}
-
-/**
- * Execute keypress action
- */
-async function domKeypress(key: string, options?: any) {
-	try {
-		const tool = getDomTool();
-		const result = await tool.keypress(key, options);
-
-		console.log('[Browserx] Keypress executed', {
-			key,
-			success: result.success,
-			duration: result.duration,
-			changes: result.changes,
-		});
-
-		return result;
-	} catch (error) {
-		console.error('[Browserx] Keypress failed:', error);
-		throw error;
-	}
-}
-
-/**
- * Build/rebuild DOM snapshot
- */
-async function domBuildSnapshot(trigger: 'action' | 'navigation' | 'manual' | 'mutation' = 'manual') {
-	try {
-		const tool = getDomTool();
-		const snapshot = await tool.buildSnapshot(trigger);
-
-		console.log('[Browserx] Snapshot built', {
-			trigger,
-			stats: snapshot.stats,
-			timestamp: snapshot.timestamp,
-		});
-
-		return {
-			success: true,
-			timestamp: snapshot.timestamp,
-			stats: snapshot.stats,
-		};
-	} catch (error) {
-		console.error('[Browserx] Snapshot build failed:', error);
-		throw error;
-	}
-}
-
-/**
- * Count nodes in serialized tree (for logging)
- */
-function countNodes(node: any): number {
-	let count = 1;
-	if (node.children) {
-		for (const child of node.children) {
-			count += countNodes(child);
-		}
-	}
-	return count;
 }
 
 function getPageContext(): PageContext {
@@ -349,12 +170,8 @@ function announcePresence(): void {
 	router.send(MessageType.TOOL_RESULT, {
 		type: 'tools-available',
 		tools: [
-			'init.domtool',                  // Manual initialization
-			'dom.getSnapshot',               // v3.0
-			'dom.click',                     // v3.0
-			'dom.type',                      // v3.0
-			'dom.keypress',                  // v3.0
-			'dom.buildSnapshot'              // v3.0
+			'init.visualEffects',            // Initialize visual effects
+			'visual.showEffect'              // Show visual effect
 		],
 		tabId: getTabId()
 	}).catch(() => {

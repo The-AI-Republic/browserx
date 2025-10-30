@@ -6,9 +6,11 @@ import type {
   SnapshotStats,
   PageContext
 } from './types';
+import type { SerializationOptions } from '../../types/domTool';
 import { getTextContent } from './utils';
 import { SerializationPipeline } from './serializers/SerializationPipeline';
 import { IIdRemapper } from './types';
+import { DEFAULT_SERIALIZATION_OPTIONS } from '../../types/domTool';
 
 export class DomSnapshot implements IDomSnapshot {
   readonly virtualDom: VirtualNode;
@@ -16,9 +18,9 @@ export class DomSnapshot implements IDomSnapshot {
   readonly pageContext: PageContext;
   readonly stats: SnapshotStats;
 
-  private _serialized?: SerializedDom;
   private _backendNodeMap?: Map<number, VirtualNode>;
   private _idRemapper?: IIdRemapper;
+  private _serialized?: SerializedDom;
 
   constructor(
     virtualDom: VirtualNode,
@@ -64,12 +66,15 @@ export class DomSnapshot implements IDomSnapshot {
     return { ...this.stats };
   }
 
-  serialize(): SerializedDom {
+  serialize(options?: SerializationOptions): SerializedDom {
     if (this._serialized) {
       return this._serialized;
     }
 
     const start = Date.now();
+
+    // Merge with defaults
+    const opts = { ...DEFAULT_SERIALIZATION_OPTIONS, ...options };
 
     // T012: Use SerializationPipeline for compaction
     const pipeline = new SerializationPipeline();
@@ -79,7 +84,7 @@ export class DomSnapshot implements IDomSnapshot {
     this._idRemapper = result.idRemapper;
 
     // T031: Build flattened tree structure from pipeline result with v3 schema
-    const body = this.flatternNode(result.tree);
+    const body = this.flatternNode(result.tree, opts.includeMetadata);
 
     // T031: Build v3 SerializedDom with normalized field names
     this._serialized = {
@@ -125,10 +130,10 @@ export class DomSnapshot implements IDomSnapshot {
    * - boundingBox → bbox (as [x, y, w, h] array)
    * - node IDs → sequential IDs via IdRemapper
    */
-  private flatternNode(node: VirtualNode): SerializedNode {
+  private flatternNode(node: VirtualNode, includeMetadata: boolean): SerializedNode {
     // Case 1: Keep semantic and non-semantic nodes (Tier 1 & 2)
     if (this.isSemanticNode(node)) {
-      return this.buildSerializedNode(node, true);
+      return this.buildSerializedNode(node, includeMetadata);
     }
 
     // Case 2: Keep semantic containers (form, table, dialog, navigation, main)
@@ -139,7 +144,7 @@ export class DomSnapshot implements IDomSnapshot {
     // Case 3: Structural node with children - hoist children to parent level
     if (node.children && node.children.length > 0) {
       const flattenedChildren = node.children
-        .map(child => this.flatternNode(child))
+        .map(child => this.flatternNode(child, includeMetadata))
         .filter((child): child is SerializedNode => child !== null);
 
       // If only one child, return it directly (hoist)
@@ -246,7 +251,7 @@ export class DomSnapshot implements IDomSnapshot {
     // Recursively flatten children (with v3 field name: kids)
     if (node.children && node.children.length > 0) {
       const flattenedChildren = node.children
-        .map(child => this.flatternNode(child))
+        .map(child => this.flatternNode(child, includeMetadata))
         .filter((child): child is SerializedNode => child !== null);
 
       if (flattenedChildren.length > 0) {

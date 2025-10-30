@@ -135,6 +135,8 @@ export class DomService {
    * sites (banking, enterprise apps) where traditional content scripts fail.
    *
    * The pierce: true parameter ensures cross-origin iframe and shadow DOM traversal.
+   *
+   * T010: Enhanced with DOMSnapshot.captureSnapshot() for paint order and layout data
    */
   async buildSnapshot(): Promise<DomSnapshot> {
     if (!this.isAttached) {
@@ -146,9 +148,10 @@ export class DomService {
 
     // T082: Add timeout protection for slow-loading iframes
     const snapshotPromise = (async () => {
-      // Parallel fetch: DOM tree + A11y tree
+      // T010: Parallel fetch: DOM tree + A11y tree + DOMSnapshot (paint order + layout)
       // Note: A11y fetch may fail on some CSP-restricted pages - we handle this gracefully
-      const [domTree, axTree] = await Promise.all([
+      // Note: DOMSnapshot may fail on older Chrome (<92) or CSP-restricted pages - graceful fallback
+      const [domTree, axTree, domSnapshot] = await Promise.all([
         this.sendCommand<any>('DOM.getDocument', { depth: -1, pierce: true })
           .catch((error: any) => {
             // T077: X-Frame-Options DENY detection
@@ -157,16 +160,25 @@ export class DomService {
             }
             throw error;
           }),
-        this.sendCommand<any>('Accessibility.getFullAXTree', { depth: -1 }).catch(() => null)
+        this.sendCommand<any>('Accessibility.getFullAXTree', { depth: -1 }).catch(() => null),
+        // T010: Fetch paint order and layout data via DOMSnapshot.captureSnapshot()
+        this.sendCommand<any>('DOMSnapshot.captureSnapshot', {
+          computedStyles: ['opacity', 'background-color', 'display', 'visibility', 'cursor'],
+          includePaintOrder: true,
+          includeDOMRects: true
+        }).catch((error: any) => {
+          console.warn('[DomService] DOMSnapshot.captureSnapshot() unavailable, falling back to basic mode:', error.message);
+          return null;
+        })
       ]);
-      return { domTree, axTree };
+      return { domTree, axTree, domSnapshot };
     })();
 
     const timeoutPromise = new Promise<never>((_, reject) => {
       setTimeout(() => reject(new Error(`SNAPSHOT_TIMEOUT: Snapshot took longer than ${this.config.snapshotTimeout}ms. Consider reducing depth or page complexity.`)), this.config.snapshotTimeout);
     });
 
-    const { domTree, axTree } = await Promise.race([snapshotPromise, timeoutPromise]);
+    const { domTree, axTree, domSnapshot } = await Promise.race([snapshotPromise, timeoutPromise]);
 
     // Build enrichment map: backendNodeId → AXNode
     const axMap = new Map<number, any>();
@@ -177,6 +189,9 @@ export class DomService {
         }
       }
     }
+
+    // T010: Build layout map: backendNodeId → LayoutData from DOMSnapshot
+    const layoutMap = this.buildLayoutMap(domSnapshot);
 
     // Build VirtualNode tree
     let nodeCounter = 0;
@@ -197,6 +212,7 @@ export class DomService {
       const backendNodeId = cdpNode.backendNodeId;
       const axNode = axMap.get(backendNodeId);
       const heuristics = computeHeuristics(cdpNode.attributes);
+      const layoutData = layoutMap.get(backendNodeId); // T010: Get layout data
 
       const vNode: VirtualNode = {
         nodeId: cdpNode.nodeId,
@@ -223,7 +239,13 @@ export class DomService {
               required: axNode.required
             }
           : undefined,
-        heuristics
+        heuristics,
+        // T010: Attach layout data from DOMSnapshot.captureSnapshot()
+        boundingBox: layoutData?.boundingBox,
+        paintOrder: layoutData?.paintOrder,
+        computedStyle: layoutData?.computedStyle,
+        scrollRects: layoutData?.scrollRects,
+        clientRects: layoutData?.clientRects
       };
 
       // Recurse to children
@@ -334,6 +356,106 @@ export class DomService {
     if (reason !== 'target_closed' && reason !== 'canceled_by_user') {
       console.warn(`[DomService] Unexpected debugger detach. Reason: ${reason}. Future operations will require re-attach.`);
     }
+  }
+
+  /**
+   * T010: Build layout map from DOMSnapshot data
+   * Extracts layout information (bounding boxes, paint order, styles, etc.) and maps
+   * them to backendNodeIds for efficient lookup during tree construction
+   */
+  private buildLayoutMap(domSnapshot: any): Map<number, any> {
+    const layoutMap = new Map<number, any>();
+
+    if (!domSnapshot?.documents?.[0]) {
+      console.log('[DomService] No layout data available - running in basic mode');
+      return layoutMap;
+    }
+
+    const doc = domSnapshot.documents[0];
+    const layout = doc.layout;
+    const strings = domSnapshot.strings || [];
+
+    if (!layout || !layout.nodeIndex) {
+      console.log('[DomService] No layout data available - running in basic mode');
+      return layoutMap;
+    }
+
+    // Extract backendNodeIds from the nodes structure
+    // CDP DOMSnapshot returns parallel arrays where indices correspond
+    const backendNodeIds = doc.nodes?.backendNodeId || [];
+
+    for (let i = 0; i < layout.nodeIndex.length; i++) {
+      const nodeIndex = layout.nodeIndex[i];
+      const backendNodeId = backendNodeIds[nodeIndex];
+
+      if (!backendNodeId) continue;
+
+      const layoutData: any = {};
+
+      // Bounding box (bounds are stored as [x, y, width, height] arrays)
+      if (layout.bounds && layout.bounds[i]) {
+        const bounds = layout.bounds[i];
+        layoutData.boundingBox = {
+          x: bounds[0],
+          y: bounds[1],
+          width: bounds[2],
+          height: bounds[3]
+        };
+      }
+
+      // Paint order
+      if (layout.paintOrders && layout.paintOrders[i] !== undefined) {
+        layoutData.paintOrder = layout.paintOrders[i];
+      }
+
+      // Scroll dimensions
+      if (layout.scrollRects && layout.scrollRects[i]) {
+        const scrollRect = layout.scrollRects[i];
+        layoutData.scrollRects = {
+          width: scrollRect[0],
+          height: scrollRect[1]
+        };
+      }
+
+      // Client dimensions
+      if (layout.clientRects && layout.clientRects[i]) {
+        const clientRect = layout.clientRects[i];
+        layoutData.clientRects = {
+          width: clientRect[0],
+          height: clientRect[1]
+        };
+      }
+
+      // Computed styles
+      if (layout.styles && layout.styles[i]) {
+        const styleIndices = layout.styles[i];
+        const computedStyle: any = {};
+
+        // styleIndices is an array of indices into the strings table
+        // Format: [propertyIndex1, valueIndex1, propertyIndex2, valueIndex2, ...]
+        for (let j = 0; j < styleIndices.length; j += 2) {
+          const propertyName = strings[styleIndices[j]];
+          const propertyValue = strings[styleIndices[j + 1]];
+
+          // Map to camelCase for our interface
+          if (propertyName === 'opacity') computedStyle.opacity = propertyValue;
+          if (propertyName === 'background-color') computedStyle.backgroundColor = propertyValue;
+          if (propertyName === 'display') computedStyle.display = propertyValue;
+          if (propertyName === 'visibility') computedStyle.visibility = propertyValue;
+          if (propertyName === 'cursor') computedStyle.cursor = propertyValue;
+        }
+
+        if (Object.keys(computedStyle).length > 0) {
+          layoutData.computedStyle = computedStyle;
+        }
+      }
+
+      layoutMap.set(backendNodeId, layoutData);
+    }
+
+    console.log(`[DomService] Layout data enriched for ${layoutMap.size} nodes (paint order: ${layout.paintOrders ? 'yes' : 'no'}, bounds: ${layout.bounds ? 'yes' : 'no'})`);
+
+    return layoutMap;
   }
 
   private computeStats(node: VirtualNode, stats: SnapshotStats): void {

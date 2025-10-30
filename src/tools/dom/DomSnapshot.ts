@@ -7,6 +7,8 @@ import type {
   PageContext
 } from './types';
 import { getTextContent } from './utils';
+import { SerializationPipeline } from './serializers/SerializationPipeline';
+import { IIdRemapper } from './types';
 
 export class DomSnapshot implements IDomSnapshot {
   readonly virtualDom: VirtualNode;
@@ -15,8 +17,8 @@ export class DomSnapshot implements IDomSnapshot {
   readonly stats: SnapshotStats;
 
   private _serialized?: SerializedDom;
-  private _nodeMap?: Map<number, VirtualNode>;
   private _backendNodeMap?: Map<number, VirtualNode>;
+  private _idRemapper?: IIdRemapper;
 
   constructor(
     virtualDom: VirtualNode,
@@ -29,22 +31,6 @@ export class DomSnapshot implements IDomSnapshot {
     this.timestamp = new Date();
   }
 
-  /**
-   * Build a flat map of nodeId -> VirtualNode for quick lookups
-   */
-  private buildNodeMap(): Map<number, VirtualNode> {
-    if (this._nodeMap) return this._nodeMap;
-
-    this._nodeMap = new Map();
-    const traverse = (node: VirtualNode) => {
-      this._nodeMap!.set(node.nodeId, node);
-      if (node.children) {
-        node.children.forEach(traverse);
-      }
-    };
-    traverse(this.virtualDom);
-    return this._nodeMap;
-  }
 
   /**
    * Build a flat map of backendNodeId -> VirtualNode for quick lookups
@@ -64,25 +50,10 @@ export class DomSnapshot implements IDomSnapshot {
   }
 
   /**
-   * Get VirtualNode by CDP nodeId
-   */
-  getNode(nodeId: number): VirtualNode | null {
-    return this.buildNodeMap().get(nodeId) ?? null;
-  }
-
-  /**
    * Get VirtualNode by backendNodeId (stable ID used in serialization)
    */
   getNodeByBackendId(backendNodeId: number): VirtualNode | null {
     return this.buildBackendNodeMap().get(backendNodeId) ?? null;
-  }
-
-  /**
-   * Get backendNodeId from nodeId (for CDP commands)
-   */
-  getBackendId(nodeId: number): number | null {
-    const node = this.getNode(nodeId);
-    return node?.backendNodeId ?? null;
   }
 
   isStale(maxAgeMs: number = 30000): boolean {
@@ -100,34 +71,61 @@ export class DomSnapshot implements IDomSnapshot {
 
     const start = Date.now();
 
-    // Build flattened tree structure (Pass 2: Remove structural junk)
-    const body = this.flattenNode(this.virtualDom);
+    // T012: Use SerializationPipeline for compaction
+    const pipeline = new SerializationPipeline();
+    const result = pipeline.execute(this.virtualDom);
 
+    // Store IdRemapper for later use
+    this._idRemapper = result.idRemapper;
+
+    // T031: Build flattened tree structure from pipeline result with v3 schema
+    const body = this.flatternNode(result.tree);
+
+    // T031: Build v3 SerializedDom with normalized field names
     this._serialized = {
+      version: 3, // T030: Schema version
       page: {
         context: {
           url: this.pageContext.url,
           title: this.pageContext.title
         },
         body,
-        stats: this.stats
+        // T031: Include compaction metrics (optional, for debugging)
+        ...(result.metrics && {
+          metrics: {
+            total_nodes: result.metrics.totalNodes,
+            serialized_nodes: result.metrics.serializedNodes,
+            token_reduction_rate: result.metrics.tokenReductionRate,
+            compaction_score: result.metrics.compactionScore
+          }
+        })
+        // Note: Collection-level states from MetadataBucketer would go here
+        // This is deferred to future optimization as it requires refactoring
+        // the serialization to separate node data from state data
       }
     };
 
     this.stats.serializationDuration = Date.now() - start;
 
+    // test>>
+    console.log("[DomSnapshot Test] SerializedDom:", JSON.stringify(this._serialized, null, 2));
+    // <<test
+
     return this._serialized;
   }
 
   /**
-   * Flatten VirtualNode tree to only include semantic/interactive elements.
-   * This implements Pass 2 of the two-pass system:
-   * - Keep semantic nodes (Tier 1 & 2)
-   * - Keep semantic containers (form, table, dialog, etc.)
-   * - Hoist children of structural nodes (remove wrapper)
-   * - Discard leaf structural nodes
+   * T031: Flatten VirtualNode tree to v3 SerializedNode with normalized field names
+   *
+   * Normalized field mappings:
+   * - aria-label → aria_label
+   * - children → kids
+   * - placeholder → hint
+   * - inputType → input_type
+   * - boundingBox → bbox (as [x, y, w, h] array)
+   * - node IDs → sequential IDs via IdRemapper
    */
-  private flattenNode(node: VirtualNode): SerializedNode {
+  private flatternNode(node: VirtualNode): SerializedNode {
     // Case 1: Keep semantic and non-semantic nodes (Tier 1 & 2)
     if (this.isSemanticNode(node)) {
       return this.buildSerializedNode(node, true);
@@ -141,7 +139,7 @@ export class DomSnapshot implements IDomSnapshot {
     // Case 3: Structural node with children - hoist children to parent level
     if (node.children && node.children.length > 0) {
       const flattenedChildren = node.children
-        .map(child => this.flattenNode(child))
+        .map(child => this.flatternNode(child))
         .filter((child): child is SerializedNode => child !== null);
 
       // If only one child, return it directly (hoist)
@@ -149,43 +147,29 @@ export class DomSnapshot implements IDomSnapshot {
         return flattenedChildren[0];
       }
 
-      // If multiple children, we need to wrap them somehow
-      // Return a minimal structural node to maintain grouping
+      // If multiple children, return minimal structural node to maintain grouping
       if (flattenedChildren.length > 1) {
+        const sequentialId = this._idRemapper?.toSequentialId(node.backendNodeId) ?? node.backendNodeId;
         return {
-          node_id: node.backendNodeId,
+          node_id: sequentialId,
           tag: node.localName || node.nodeName.toLowerCase(),
-          children: flattenedChildren
+          kids: flattenedChildren
         };
       }
     }
 
     // Case 4: Leaf structural node with no children - discard
-    // Return a minimal placeholder that will be filtered out
     return null as any;
   }
 
   /**
-   * Check if node is semantic or non-semantic (interactive)
-   */
-  private isSemanticNode(node: VirtualNode): boolean {
-    return node.tier === 'semantic' || node.tier === 'non-semantic';
-  }
-
-  /**
-   * Check if node is a semantic container that should be preserved for structure
-   */
-  private isSemanticContainer(node: VirtualNode): boolean {
-    const role = node.accessibility?.role || '';
-    const containerRoles = ['form', 'table', 'dialog', 'navigation', 'main', 'region', 'article', 'section'];
-    return containerRoles.includes(role);
-  }
-
-  /**
-   * Build a SerializedNode with metadata
+   * T031: Build SerializedNode with v3 schema (normalized field names)
    */
   private buildSerializedNode(node: VirtualNode, includeMetadata: boolean): SerializedNode {
-    // Get attributes for additional metadata
+    // Get sequential ID from IdRemapper
+    const sequentialId = this._idRemapper?.toSequentialId(node.backendNodeId) ?? node.backendNodeId;
+
+    // Get attributes for metadata extraction
     const attrMap = new Map<string, string>();
     if (node.attributes) {
       for (let i = 0; i < node.attributes.length; i += 2) {
@@ -193,10 +177,9 @@ export class DomSnapshot implements IDomSnapshot {
       }
     }
 
-    // Build base node
-    // Use backendNodeId (stable across snapshots) instead of nodeId (transient)
+    // Build base node with v3 field names
     const serializedNode: SerializedNode = {
-      node_id: node.backendNodeId,
+      node_id: sequentialId,
       tag: node.localName || node.nodeName.toLowerCase()
     };
 
@@ -207,9 +190,9 @@ export class DomSnapshot implements IDomSnapshot {
 
     // Add full metadata for semantic nodes
     if (includeMetadata) {
-      // Aria label / name
+      // aria_label (normalized from aria-label)
       if (node.accessibility?.name) {
-        serializedNode['aria-label'] = node.accessibility.name;
+        serializedNode.aria_label = node.accessibility.name;
       }
 
       // Text content
@@ -228,14 +211,24 @@ export class DomSnapshot implements IDomSnapshot {
         serializedNode.href = attrMap.get('href');
       }
 
-      // Input type
+      // input_type (normalized from inputType)
       if (attrMap.has('type')) {
-        serializedNode.inputType = attrMap.get('type');
+        serializedNode.input_type = attrMap.get('type');
       }
 
-      // Placeholder
+      // hint (normalized from placeholder)
       if (attrMap.has('placeholder')) {
-        serializedNode.placeholder = attrMap.get('placeholder');
+        serializedNode.hint = attrMap.get('placeholder');
+      }
+
+      // bbox (compact array format [x, y, w, h])
+      if (node.boundingBox) {
+        serializedNode.bbox = [
+          Math.round(node.boundingBox.x),
+          Math.round(node.boundingBox.y),
+          Math.round(node.boundingBox.width),
+          Math.round(node.boundingBox.height)
+        ];
       }
 
       // Build states object from accessibility info
@@ -250,17 +243,33 @@ export class DomSnapshot implements IDomSnapshot {
       }
     }
 
-    // Recursively flatten children
+    // Recursively flatten children (with v3 field name: kids)
     if (node.children && node.children.length > 0) {
       const flattenedChildren = node.children
-        .map(child => this.flattenNode(child))
+        .map(child => this.flatternNode(child))
         .filter((child): child is SerializedNode => child !== null);
 
       if (flattenedChildren.length > 0) {
-        serializedNode.children = flattenedChildren;
+        serializedNode.kids = flattenedChildren; // v3: kids instead of children
       }
     }
 
     return serializedNode;
+  }
+
+  /**
+   * Check if node is semantic or non-semantic (interactive)
+   */
+  private isSemanticNode(node: VirtualNode): boolean {
+    return node.tier === 'semantic' || node.tier === 'non-semantic';
+  }
+
+  /**
+   * Check if node is a semantic container that should be preserved for structure
+   */
+  private isSemanticContainer(node: VirtualNode): boolean {
+    const role = node.accessibility?.role || '';
+    const containerRoles = ['form', 'table', 'dialog', 'navigation', 'main', 'region', 'article', 'section'];
+    return containerRoles.includes(role);
   }
 }

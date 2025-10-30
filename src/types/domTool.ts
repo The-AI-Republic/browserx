@@ -199,8 +199,13 @@ export interface SnapshotStats {
 
 /**
  * Flattened, token-optimized DOM representation for LLM
+ *
+ * @version 3.0.0 - T030: Normalized field names with snake_case convention
  */
 export interface SerializedDom {
+  /** Schema version for compatibility tracking */
+  version: number;
+
   page: {
     context: {
       url: string;
@@ -216,20 +221,86 @@ export interface SerializedDom {
       hostId: string;
       body: SerializedNode;
     }>;
+    /** Compaction metrics for debugging (optional) */
+    metrics?: {
+      total_nodes: number;
+      serialized_nodes: number;
+      token_reduction_rate: number;
+      compaction_score: number;
+    };
+    /** Collection-level state arrays (P3.5 MetadataBucketer) */
+    states?: {
+      disabled?: number[];
+      checked?: number[];
+      required?: number[];
+      readonly?: number[];
+      expanded?: number[];
+      selected?: number[];
+    };
   };
 }
 
 /**
  * Serialized node (flattened, defaults omitted)
+ *
+ * @version 3.0.0 - T030: Normalized field names
+ * Field name mappings:
+ * - aria-label → aria_label (snake_case for token efficiency)
+ * - children → kids (shorter alias)
+ * - placeholder → hint (shorter alias)
+ * - inputType → input_type (snake_case)
+ * - boundingBox → bbox (compact array [x, y, w, h])
  */
 export interface SerializedNode {
+  /** Sequential node ID (1, 2, 3...) mapped from backendNodeId */
+  node_id: number;
+
+  /** HTML tag name */
+  tag: string;
+
+  /** ARIA role */
+  role?: string;
+
+  /** ARIA label (normalized from aria-label) */
+  aria_label?: string;
+
+  /** Visible text content */
+  text?: string;
+
+  /** Current value for form inputs */
+  value?: string;
+
+  /** Child nodes (normalized from children) */
+  kids?: SerializedNode[];
+
+  /** Link href */
+  href?: string;
+
+  /** Input type (normalized from inputType) */
+  input_type?: string;
+
+  /** Placeholder text (normalized from placeholder) */
+  hint?: string;
+
+  /** Bounding box as compact array [x, y, width, height] */
+  bbox?: number[];
+
+  /** Element states (disabled, checked, etc.) - may be moved to collection-level */
+  states?: Record<string, boolean | string>;
+}
+
+/**
+ * Legacy SerializedNode interface (v2.x)
+ * @deprecated Use SerializedNode (v3) with normalized field names
+ */
+export interface SerializedNodeV2 {
   node_id: number;
   tag: string;
   role?: string;
   "aria-label"?: string;
   text?: string;
   value?: string;
-  children?: SerializedNode[];
+  children?: SerializedNodeV2[];
   href?: string;
   inputType?: string;
   placeholder?: string;

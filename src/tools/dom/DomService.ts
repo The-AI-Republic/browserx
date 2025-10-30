@@ -489,7 +489,7 @@ export class DomService {
   }
 
   // Action methods (T037-T045 will implement these)
-  async click(backendNodeId: number): Promise<ActionResult> {
+  async click(nodeId: number): Promise<ActionResult> {
     const start = Date.now();
 
     try {
@@ -497,10 +497,17 @@ export class DomService {
         throw new Error('NODE_NOT_FOUND: No snapshot available');
       }
 
-      // Verify node exists in snapshot (backendNodeId comes from serialized output)
+      // Translate sequential ID (from LLM) to backendNodeId (for CDP)
+      // The LLM sees sequential IDs (1, 2, 3...) but CDP requires backendNodeIds
+      const backendNodeId = this.currentSnapshot.translateSequentialIdToBackendId(nodeId);
+      if (backendNodeId === null) {
+        throw new Error(`NODE_NOT_FOUND: Node ${nodeId} not found in ID mapping`);
+      }
+
+      // Verify node exists in snapshot
       const node = this.currentSnapshot.getNodeByBackendId(backendNodeId);
       if (!node) {
-        throw new Error(`NODE_NOT_FOUND: Node ${backendNodeId} not found in snapshot`);
+        throw new Error(`NODE_NOT_FOUND: Node ${nodeId} (backend: ${backendNodeId}) not found in snapshot`);
       }
 
       // Get box model for coordinates
@@ -567,7 +574,7 @@ export class DomService {
           scrollChanged: false,
           valueChanged: false
         },
-        nodeId: backendNodeId,
+        nodeId: nodeId, // Return the original sequential ID that LLM provided
         actionType: 'click',
         timestamp: new Date().toISOString()
       };
@@ -587,14 +594,14 @@ export class DomService {
           scrollChanged: false,
           valueChanged: false
         },
-        nodeId: backendNodeId,
+        nodeId: nodeId, // Return the original sequential ID that LLM provided
         actionType: 'click',
         timestamp: new Date().toISOString()
       };
     }
   }
 
-  async type(backendNodeId: number, text: string): Promise<ActionResult> {
+  async type(nodeId: number, text: string): Promise<ActionResult> {
     const start = Date.now();
 
     try {
@@ -602,10 +609,16 @@ export class DomService {
         throw new Error('NODE_NOT_FOUND: No snapshot available');
       }
 
+      // Translate sequential ID (from LLM) to backendNodeId (for CDP)
+      const backendNodeId = this.currentSnapshot.translateSequentialIdToBackendId(nodeId);
+      if (backendNodeId === null) {
+        throw new Error(`NODE_NOT_FOUND: Node ${nodeId} not found in ID mapping`);
+      }
+
       // Verify node exists in snapshot
       const node = this.currentSnapshot.getNodeByBackendId(backendNodeId);
       if (!node) {
-        throw new Error(`NODE_NOT_FOUND: Node ${backendNodeId} not found`);
+        throw new Error(`NODE_NOT_FOUND: Node ${nodeId} (backend: ${backendNodeId}) not found`);
       }
 
       // Focus element
@@ -651,7 +664,7 @@ export class DomService {
           valueChanged: true,
           newValue: text
         },
-        nodeId: backendNodeId,
+        nodeId: nodeId, // Return the original sequential ID that LLM provided
         actionType: 'type',
         timestamp: new Date().toISOString()
       };
@@ -671,20 +684,20 @@ export class DomService {
           scrollChanged: false,
           valueChanged: false
         },
-        nodeId: backendNodeId,
+        nodeId: nodeId, // Return the original sequential ID that LLM provided
         actionType: 'type',
         timestamp: new Date().toISOString()
       };
     }
   }
 
-  async scroll(backendNodeId: number | 'window', direction: 'up' | 'down'): Promise<ActionResult> {
+  async scroll(nodeId: number | 'window', direction: 'up' | 'down'): Promise<ActionResult> {
     const start = Date.now();
 
     try {
       const deltaY = direction === 'down' ? 500 : -500;
 
-      if (backendNodeId === 'window') {
+      if (nodeId === 'window') {
         // Scroll page
         await this.sendCommand('Input.dispatchMouseEvent', {
           type: 'mouseWheel',
@@ -699,10 +712,16 @@ export class DomService {
           throw new Error('NODE_NOT_FOUND: No snapshot available');
         }
 
+        // Translate sequential ID (from LLM) to backendNodeId (for CDP)
+        const backendNodeId = this.currentSnapshot.translateSequentialIdToBackendId(nodeId);
+        if (backendNodeId === null) {
+          throw new Error(`NODE_NOT_FOUND: Node ${nodeId} not found in ID mapping`);
+        }
+
         // Verify node exists in snapshot
         const node = this.currentSnapshot.getNodeByBackendId(backendNodeId);
         if (!node) {
-          throw new Error(`NODE_NOT_FOUND: Node ${backendNodeId} not found`);
+          throw new Error(`NODE_NOT_FOUND: Node ${nodeId} (backend: ${backendNodeId}) not found`);
         }
 
         const boxModel = await this.sendCommand<any>('DOM.getBoxModel', { backendNodeId });
@@ -733,7 +752,7 @@ export class DomService {
           scrollChanged: true,
           valueChanged: false
         },
-        nodeId: backendNodeId === 'window' ? NODE_ID_WINDOW : backendNodeId,
+        nodeId: nodeId === 'window' ? NODE_ID_WINDOW : nodeId, // Return the original sequential ID
         actionType: 'scroll',
         timestamp: new Date().toISOString()
       };
@@ -753,7 +772,7 @@ export class DomService {
           scrollChanged: false,
           valueChanged: false
         },
-        nodeId: backendNodeId === 'window' ? NODE_ID_WINDOW : backendNodeId,
+        nodeId: nodeId === 'window' ? NODE_ID_WINDOW : nodeId, // Return the original sequential ID
         actionType: 'scroll',
         timestamp: new Date().toISOString()
       };

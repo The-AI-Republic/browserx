@@ -63,8 +63,8 @@ describe('DomSnapshot', () => {
     );
 
     expect(snapshot.virtualDom).toBe(mockVirtualDom);
-    expect(snapshot.getBackendId(2)).toBe(101); // nodeId 2 -> backendNodeId 101
-    expect(snapshot.getNode(2)?.backendNodeId).toBe(101);
+    expect(snapshot.getNodeByBackendId(101)?.backendNodeId).toBe(101); // backendNodeId 101 exists
+    expect(snapshot.getNodeByBackendId(101)?.nodeId).toBe(2); // CDP nodeId is 2
     expect(snapshot.pageContext.url).toBe('https://example.com');
   });
 
@@ -87,9 +87,13 @@ describe('DomSnapshot', () => {
     const buttonNode = allNodes.find(n => n.tag === 'button');
 
     expect(buttonNode).toBeDefined();
-    expect(buttonNode?.node_id).toBe(101); // backendNodeId (stable ID)
+    expect(buttonNode?.node_id).toBe(1); // Sequential ID (remapped from backendNodeId 101)
     expect(buttonNode?.role).toBe('button');
     expect(buttonNode?.aria_label).toBe('Submit');
+
+    // Verify we can translate back to backend ID
+    const backendId = snapshot.translateSequentialIdToBackendId(buttonNode?.node_id!);
+    expect(backendId).toBe(101); // Should map back to original backendNodeId
   });
 
   it('should detect stale snapshots', async () => {
@@ -127,8 +131,11 @@ describe('DomSnapshot', () => {
       mockStats
     );
 
-    expect(snapshot.getBackendId(999)).toBeNull();
-    expect(snapshot.getNode(999)).toBeNull();
+    expect(snapshot.getNodeByBackendId(999)).toBeNull(); // Non-existent backendNodeId
+
+    // After serialization, test ID translation for non-existent sequential IDs
+    snapshot.serialize();
+    expect(snapshot.translateSequentialIdToBackendId(999)).toBeNull();
   });
 
   it('should return stats copy', () => {

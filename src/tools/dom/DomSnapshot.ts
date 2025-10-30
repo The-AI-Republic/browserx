@@ -58,6 +58,26 @@ export class DomSnapshot implements IDomSnapshot {
     return this.buildBackendNodeMap().get(backendNodeId) ?? null;
   }
 
+  /**
+   * Translate sequential ID (from LLM) to backendNodeId (for CDP operations)
+   * This is critical for action execution: LLM sees sequential IDs (1, 2, 3...)
+   * but CDP requires backendNodeIds.
+   */
+  translateSequentialIdToBackendId(sequentialId: number): number | null {
+    if (!this._idRemapper) {
+      // If no remapper, assume sequential ID is the backend ID (backward compatibility)
+      return sequentialId;
+    }
+    return this._idRemapper.toBackendId(sequentialId);
+  }
+
+  /**
+   * Get IdRemapper for direct access (if needed)
+   */
+  getIdRemapper(): IIdRemapper | undefined {
+    return this._idRemapper;
+  }
+
   isStale(maxAgeMs: number = 30000): boolean {
     return Date.now() - this.timestamp.getTime() > maxAgeMs;
   }

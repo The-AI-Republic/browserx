@@ -4,12 +4,12 @@ import type {
   SerializedDom,
   SerializedNode,
   SnapshotStats,
-  PageContext
+  PageContext,
+  IIdRemapper
 } from './types';
 import type { SerializationOptions } from '../../types/domTool';
 import { getTextContent } from './utils';
 import { SerializationPipeline } from './serializers/SerializationPipeline';
-import { IIdRemapper } from './types';
 import { DEFAULT_SERIALIZATION_OPTIONS } from '../../types/domTool';
 
 export class DomSnapshot implements IDomSnapshot {
@@ -74,7 +74,15 @@ export class DomSnapshot implements IDomSnapshot {
     const start = Date.now();
 
     // Merge with defaults
-    const opts = { ...DEFAULT_SERIALIZATION_OPTIONS, ...options };
+    const opts = {
+      ...DEFAULT_SERIALIZATION_OPTIONS,
+      ...options,
+      // Deep merge metadata options
+      metadata: {
+        ...DEFAULT_SERIALIZATION_OPTIONS.metadata,
+        ...options?.metadata
+      }
+    };
 
     // T012: Use SerializationPipeline for compaction
     const pipeline = new SerializationPipeline();
@@ -84,7 +92,7 @@ export class DomSnapshot implements IDomSnapshot {
     this._idRemapper = result.idRemapper;
 
     // T031: Build flattened tree structure from pipeline result with v3 schema
-    const body = this.flatternNode(result.tree, opts.includeMetadata);
+    const body = this.flatternNode(result.tree, opts);
 
     // T031: Build v3 SerializedDom with normalized field names
     this._serialized = {
@@ -130,21 +138,23 @@ export class DomSnapshot implements IDomSnapshot {
    * - boundingBox → bbox (as [x, y, w, h] array)
    * - node IDs → sequential IDs via IdRemapper
    */
-  private flatternNode(node: VirtualNode, includeMetadata: boolean): SerializedNode {
+  private flatternNode(node: VirtualNode, opts: Required<SerializationOptions>): SerializedNode {
     // Case 1: Keep semantic and non-semantic nodes (Tier 1 & 2)
     if (this.isSemanticNode(node)) {
-      return this.buildSerializedNode(node, includeMetadata);
+      return this.buildSerializedNode(node, opts);
     }
 
     // Case 2: Keep semantic containers (form, table, dialog, navigation, main)
     if (this.isSemanticContainer(node)) {
-      return this.buildSerializedNode(node, false);
+      // For containers, create minimal options with no metadata
+      const minimalOpts = { ...opts, metadata: DEFAULT_SERIALIZATION_OPTIONS.metadata };
+      return this.buildSerializedNode(node, minimalOpts);
     }
 
     // Case 3: Structural node with children - hoist children to parent level
     if (node.children && node.children.length > 0) {
       const flattenedChildren = node.children
-        .map(child => this.flatternNode(child, includeMetadata))
+        .map(child => this.flatternNode(child, opts))
         .filter((child): child is SerializedNode => child !== null);
 
       // If only one child, return it directly (hoist)
@@ -170,7 +180,7 @@ export class DomSnapshot implements IDomSnapshot {
   /**
    * T031: Build SerializedNode with v3 schema (normalized field names)
    */
-  private buildSerializedNode(node: VirtualNode, includeMetadata: boolean): SerializedNode {
+  private buildSerializedNode(node: VirtualNode, opts: Required<SerializationOptions>): SerializedNode {
     // Get sequential ID from IdRemapper
     const sequentialId = this._idRemapper?.toSequentialId(node.backendNodeId) ?? node.backendNodeId;
 
@@ -188,46 +198,60 @@ export class DomSnapshot implements IDomSnapshot {
       tag: node.localName || node.nodeName.toLowerCase()
     };
 
-    // Add role if available
-    if (node.accessibility?.role) {
+    // Add role if available (exclude "none" values)
+    if (node.accessibility?.role && node.accessibility.role !== 'none') {
       serializedNode.role = node.accessibility.role;
     }
 
-    // Add full metadata for semantic nodes
-    if (includeMetadata) {
+    // Determine if we should include metadata (check any fine-grained flag)
+    const shouldIncludeMetadata =
+      opts.metadata.includeAriaLabel ||
+      opts.metadata.includeText ||
+      opts.metadata.includeValue ||
+      opts.metadata.includeInputType ||
+      opts.metadata.includeHint ||
+      opts.metadata.includeBbox ||
+      opts.metadata.includeStates ||
+      opts.metadata.includeHref;
+
+    // Add metadata based on configuration
+    if (shouldIncludeMetadata) {
       // aria_label (normalized from aria-label)
-      if (node.accessibility?.name) {
+      if (opts.metadata.includeAriaLabel && node.accessibility?.name) {
         serializedNode.aria_label = node.accessibility.name;
       }
 
       // Text content
-      const text = getTextContent(node);
-      if (text) {
-        serializedNode.text = text;
+      if (opts.metadata.includeText) {
+        const text = getTextContent(node);
+        if (text) {
+          serializedNode.text = text;
+        }
       }
 
       // Value (for inputs)
-      if (typeof node.accessibility?.value === 'string') {
+      if ((opts.metadata.includeValue || opts.includeValues) &&
+          typeof node.accessibility?.value === 'string') {
         serializedNode.value = node.accessibility.value;
       }
 
       // Link href
-      if (attrMap.has('href')) {
+      if (opts.metadata.includeHref && attrMap.has('href')) {
         serializedNode.href = attrMap.get('href');
       }
 
       // input_type (normalized from inputType)
-      if (attrMap.has('type')) {
+      if (opts.metadata.includeInputType && attrMap.has('type')) {
         serializedNode.input_type = attrMap.get('type');
       }
 
       // hint (normalized from placeholder)
-      if (attrMap.has('placeholder')) {
+      if (opts.metadata.includeHint && attrMap.has('placeholder')) {
         serializedNode.hint = attrMap.get('placeholder');
       }
 
       // bbox (compact array format [x, y, w, h])
-      if (node.boundingBox) {
+      if (opts.metadata.includeBbox && node.boundingBox) {
         serializedNode.bbox = [
           Math.round(node.boundingBox.x),
           Math.round(node.boundingBox.y),
@@ -237,21 +261,23 @@ export class DomSnapshot implements IDomSnapshot {
       }
 
       // Build states object from accessibility info
-      const states: Record<string, boolean | string> = {};
-      if (node.accessibility?.disabled !== undefined) states.disabled = node.accessibility.disabled;
-      if (node.accessibility?.checked !== undefined) states.checked = node.accessibility.checked;
-      if (node.accessibility?.required !== undefined) states.required = node.accessibility.required;
-      if (node.accessibility?.expanded !== undefined) states.expanded = node.accessibility.expanded;
+      if (opts.metadata.includeStates) {
+        const states: Record<string, boolean | string> = {};
+        if (node.accessibility?.disabled !== undefined) states.disabled = node.accessibility.disabled;
+        if (node.accessibility?.checked !== undefined) states.checked = node.accessibility.checked;
+        if (node.accessibility?.required !== undefined) states.required = node.accessibility.required;
+        if (node.accessibility?.expanded !== undefined) states.expanded = node.accessibility.expanded;
 
-      if (Object.keys(states).length > 0) {
-        serializedNode.states = states;
+        if (Object.keys(states).length > 0) {
+          serializedNode.states = states;
+        }
       }
     }
 
     // Recursively flatten children (with v3 field name: kids)
     if (node.children && node.children.length > 0) {
       const flattenedChildren = node.children
-        .map(child => this.flatternNode(child, includeMetadata))
+        .map(child => this.flatternNode(child, opts))
         .filter((child): child is SerializedNode => child !== null);
 
       if (flattenedChildren.length > 0) {

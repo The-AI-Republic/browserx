@@ -6,8 +6,8 @@ import type { VirtualNode, PageContext, SnapshotStats, SerializedNode } from '..
 // Helper to flatten tree structure for testing
 function flattenNodes(node: SerializedNode): SerializedNode[] {
   const result: SerializedNode[] = [node];
-  if (node.children) {
-    for (const child of node.children) {
+  if (node.kids) {
+    for (const child of node.kids) {
       result.push(...flattenNodes(child));
     }
   }
@@ -89,7 +89,7 @@ describe('DomSnapshot', () => {
     expect(buttonNode).toBeDefined();
     expect(buttonNode?.node_id).toBe(101); // backendNodeId (stable ID)
     expect(buttonNode?.role).toBe('button');
-    expect(buttonNode?.['aria-label']).toBe('Submit');
+    expect(buttonNode?.aria_label).toBe('Submit');
   });
 
   it('should detect stale snapshots', async () => {

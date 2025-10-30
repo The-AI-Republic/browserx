@@ -214,8 +214,32 @@ export interface SerializationOptions {
   /** Include form input values */
   includeValues?: boolean; // default: false
 
-  /** Include full metadata (bbox, viewport) */
-  includeMetadata?: boolean; // default: false
+  /** Fine-grained metadata control */
+  metadata?: {
+    /** Include aria-label/accessibility name */
+    includeAriaLabel?: boolean; // default: false
+
+    /** Include text content */
+    includeText?: boolean; // default: false
+
+    /** Include form input values (overrides top-level includeValues) */
+    includeValue?: boolean; // default: false
+
+    /** Include input type attribute */
+    includeInputType?: boolean; // default: false
+
+    /** Include placeholder/hint text */
+    includeHint?: boolean; // default: false
+
+    /** Include bounding box coordinates */
+    includeBbox?: boolean; // default: false
+
+    /** Include element states (disabled, checked, etc.) */
+    includeStates?: boolean; // default: false
+
+    /** Include href for links */
+    includeHref?: boolean; // default: false
+  };
 
   /** Include invisible elements */
   includeHiddenElements?: boolean; // default: false
@@ -367,8 +391,17 @@ export const DEFAULT_CONFIG: Required<DomToolConfig> = {
  * Default serialization options
  */
 export const DEFAULT_SERIALIZATION_OPTIONS: Required<SerializationOptions> = {
-  includeValues: false,
-  includeMetadata: false,
+  includeValues: true,
+  metadata: {
+    includeAriaLabel: true,
+    includeText: true,
+    includeValue: true,
+    includeInputType: true,
+    includeHint: true,
+    includeBbox: false,
+    includeStates: true,
+    includeHref: true,
+  },
   includeHiddenElements: false,
   maxTextLength: 500,
   maxLabelLength: 250,

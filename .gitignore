@@ -4,6 +4,7 @@
 !.env.example
 
 # IDE and tools
+.ai_design/
 .claude/
 .specify/
 .vscode/

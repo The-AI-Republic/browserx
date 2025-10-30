@@ -29,7 +29,7 @@
  * T026: Stage 3 Payload Optimization
  */
 
-import { VirtualNode } from '../../types';
+import type { VirtualNode } from '../../types';
 
 export interface BucketedMetadata {
   disabled: number[];      // Node IDs with disabled state

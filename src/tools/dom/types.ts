@@ -235,7 +235,7 @@ export const DEFAULT_PIPELINE_CONFIG: PipelineConfig = {
   enableTextNodeFilter: true,
   enableNoiseFilter: true,
   enableSemanticContainerFilter: true,
-  enablePaintOrderFilter: true,
+  enablePaintOrderFilter: false,  // Disabled by default due to buggy algorithm
 
   // Stage 2: Structure Simplification
   enableTextCollapsing: true,

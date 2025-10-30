@@ -18,7 +18,7 @@ import { NODE_TYPE_TEXT } from '../../types';
 export class TextNodeFilter {
   private minTextLength: number;
 
-  constructor(minTextLength: number = 2) {
+  constructor(minTextLength: number = 3) {
     this.minTextLength = minTextLength;
   }
 

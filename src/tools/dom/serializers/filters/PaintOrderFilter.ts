@@ -1,4 +1,7 @@
 /**
+ * Currently the code in this file is experimental and may produce incorrect results.
+ * Disabled by default until further testing and improvements are made.
+ * 
  * PaintOrderFilter (F5): Remove fully obscured elements using paint order
  *
  * Removes elements that are 100% covered by other elements with higher paint order.
@@ -19,7 +22,7 @@
  * T017: Stage 1 Signal Filtering
  */
 
-import { VirtualNode } from '../../types';
+import type { VirtualNode } from '../../types';
 import { RectUnion } from '../utils/RectUnion';
 
 export class PaintOrderFilter {

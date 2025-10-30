@@ -16,7 +16,7 @@
  * T016: Stage 1 Signal Filtering
  */
 
-import { VirtualNode } from '../../types';
+import type { VirtualNode } from '../../types';
 
 export class SemanticContainerFilter {
   private landmarkRoles: Set<string>;

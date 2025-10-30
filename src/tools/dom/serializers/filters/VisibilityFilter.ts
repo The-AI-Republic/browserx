@@ -14,7 +14,7 @@
  * T013: Stage 1 Signal Filtering
  */
 
-import { VirtualNode } from '../../types';
+import type { VirtualNode } from '../../types';
 
 export class VisibilityFilter {
   /**

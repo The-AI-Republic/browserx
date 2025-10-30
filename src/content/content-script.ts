@@ -3,12 +3,9 @@
  * Provides visual effects for DOM operations performed via CDP.
  */
 
-import { MessageRouter, MessageType } from '../core/MessageRouter';
-
 // VISUAL EFFECTS v3.0
 import VisualEffectController from './ui_effect/VisualEffectController.svelte';
 
-let router: MessageRouter | null = null;
 let visualEffectController: any = null;
 let visualEffectShadowHost: HTMLElement | null = null;
 
@@ -32,11 +29,10 @@ interface PageContext {
 function initialize(): void {
 	console.log('[Browserx] Content script initialized');
 
-	router = new MessageRouter('content');
-	setupMessageHandlers();
-	announcePresence();
+	// Setup direct message listener for visual effects from DomService
+	setupDirectMessageListener();
 
-	// Note: Visual effects are initialized lazily when DomTool is first used
+	// Note: Visual effects are initialized lazily when first SHOW_VISUAL_EFFECT message is received
 }
 
 /**
@@ -69,59 +65,39 @@ function initializeVisualEffects(): void {
 }
 
 /**
- * Initialize visual effects explicitly
- * This command allows the agent to manually initialize visual effects in the target tab.
+ * Setup direct chrome.runtime.onMessage listener
+ * Handles SHOW_VISUAL_EFFECT messages from DomService
  */
-function initVisualEffects() {
-	try {
-		if (!visualEffectController) {
-			initializeVisualEffects();
-		}
+function setupDirectMessageListener(): void {
+	chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
+		// Handle SHOW_VISUAL_EFFECT from DomService
+		if (message.type === 'SHOW_VISUAL_EFFECT') {
+			try {
+				// Lazy initialize visual effects if not already initialized
+				if (!visualEffectController) {
+					initializeVisualEffects();
+				}
 
-		return {
-			success: true,
-			message: 'Visual effects initialized successfully',
-			tabId: getTabId(),
-			initialized: {
-				visualEffects: !!visualEffectController,
+				// Extract effect type and coordinates (coordinates may be undefined for undulate)
+				const { type, x, y } = message.effect;
+
+				// Dispatch custom event to VisualEffectController
+				// For ripple/cursor/highlight: x, y are screen coordinates
+				// For undulate: x, y are undefined (full-page effect)
+				const customEvent = new CustomEvent('browserx:show-visual-effect', {
+					detail: { type, x, y },
+					bubbles: false,
+					cancelable: false
+				});
+				document.dispatchEvent(customEvent);
+
+				sendResponse({ success: true });
+			} catch (error) {
+				console.error('[Browserx] Error handling visual effect:', error);
+				sendResponse({ success: false, error: error.message });
 			}
-		};
-	} catch (error) {
-		console.error('[Browserx] Failed to initialize visual effects:', error);
-		throw error;
-	}
-}
-
-function setupMessageHandlers(): void {
-	if (!router) {
-		return;
-	}
-
-	router.on(MessageType.PING, () => ({
-		type: MessageType.PONG,
-		timestamp: Date.now(),
-		initLevel: getInitLevel(),
-		readyState: document.readyState,
-		version: '3.0.0',
-		capabilities: ['visual_effects']
-	}));
-
-	router.on(MessageType.TAB_COMMAND, async (message) => {
-		const { command, args } = message.payload;
-
-		// INITIALIZATION COMMANDS
-		if (command === 'init.visualEffects') {
-			return initVisualEffects();
+			return true; // Keep channel open for async response
 		}
-
-		// SHOW VISUAL EFFECT (for CDP-based DOM actions)
-		if (command === 'visual.showEffect') {
-			const { type, x, y } = args as { type: string; x: number; y: number };
-			// Visual effects are handled via custom events dispatched by DomTool (CDP-based)
-			return { success: true };
-		}
-
-		throw new Error(`Unknown command: ${command}`);
 	});
 }
 
@@ -155,50 +131,8 @@ function getPageContext(): PageContext {
 	};
 }
 
-function announcePresence(): void {
-	if (!router) {
-		return;
-	}
-
-	router.send(MessageType.TAB_RESULT, {
-		type: 'content-script-ready',
-		context: getPageContext()
-	}).catch(() => {
-		/* ignore connection errors */
-	});
-
-	router.send(MessageType.TOOL_RESULT, {
-		type: 'tools-available',
-		tools: [
-			'init.visualEffects',            // Initialize visual effects
-			'visual.showEffect'              // Show visual effect
-		],
-		tabId: getTabId()
-	}).catch(() => {
-		/* ignore connection errors */
-	});
-}
-
-function getTabId(): number | undefined {
-	return (window as any).__browserxTabId;
-}
-
-function getInitLevel(): number {
-	if (!router) return 1;
-	if (document.readyState === 'loading') return 2;
-	if (document.readyState === 'interactive') return 3;
-	return 4;
-}
-
 window.addEventListener('pagehide', () => {
-	if (router) {
-		router.cleanup();
-	}
-	if (domTool) {
-		domTool.destroy();
-		domTool = null;
-		console.log('[Browserx] DomTool v3.0 destroyed');
-	}
+	// Clean up visual effects
 	if (visualEffectController) {
 		visualEffectController.$destroy();
 		visualEffectController = null;

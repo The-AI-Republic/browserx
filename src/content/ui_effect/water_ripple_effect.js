@@ -16,6 +16,8 @@ class WaterRipple {
             dropRadius: options.dropRadius || 20,
             perturbance: options.perturbance || 0.045, // Increased 50% for wider spread
             imageUrl: options.imageUrl || null,
+            canvasScale: options.canvasScale || 0.5, // Render at 50% resolution for performance
+            idleThreshold: options.idleThreshold || 0.002, // Activity threshold for auto-pause
             ...options
         };
 
@@ -26,6 +28,21 @@ class WaterRipple {
         this.undulating = false;
         this.undulateStartTime = 0;
         this.updateCounter = 0; // For 50% speed increase (1.5x updates per frame)
+
+        // Performance optimization state
+        this.textureBoundariesDirty = true; // Flag to recompute boundaries
+        this.cachedTextureBoundaries = null; // Cached boundaries
+        this.lastActivity = 0; // Timestamp of last ripple activity
+        this.isIdle = true; // Whether simulation has settled
+        this.activityLevel = 0; // Current activity level (for auto-pause)
+
+        // Effect duration control (4s active, 5s total fadeout)
+        this.effectStartTime = 0; // When current effect sequence started
+        this.effectTimeout = null; // Timeout for effect cleanup
+        this.isEffectActive = false; // Whether any effect is currently active
+
+        // Undulate effect control
+        this.undulateTimeouts = []; // Array of pending undulate timeouts
 
         // Create overlay canvas
         this._createCanvas();
@@ -165,15 +182,25 @@ class WaterRipple {
 
         this._updateSize();
 
-        // Handle window resize
+        // Debounced resize handler for performance
+        this._resizeTimeout = null;
         this._resizeHandler = () => {
-            this._updateSize();
-            // Reload background image on resize to maintain quality
-            if (this.imageSource) {
-                this._loadImage(this.imageSource);
+            // Mark boundaries as dirty immediately for next render
+            this.textureBoundariesDirty = true;
+
+            // Debounce the actual resize work
+            if (this._resizeTimeout) {
+                clearTimeout(this._resizeTimeout);
             }
+            this._resizeTimeout = setTimeout(() => {
+                this._updateSize();
+                // Reload background image on resize to maintain quality
+                if (this.imageSource) {
+                    this._loadImage(this.imageSource);
+                }
+            }, 150); // Wait 150ms after last resize event
         };
-        window.addEventListener('resize', this._resizeHandler);
+        window.addEventListener('resize', this._resizeHandler, { passive: true });
     }
 
     _initWebGL() {
@@ -468,8 +495,14 @@ class WaterRipple {
     }
 
     _updateSize() {
-        this.canvas.width = window.innerWidth;
-        this.canvas.height = window.innerHeight;
+        // Use scaled resolution for better performance
+        // CSS will scale it up to full size
+        const scale = this.options.canvasScale;
+        this.canvas.width = Math.floor(window.innerWidth * scale);
+        this.canvas.height = Math.floor(window.innerHeight * scale);
+
+        // Mark boundaries as dirty after resize
+        this.textureBoundariesDirty = true;
     }
 
     _startAnimation() {
@@ -487,13 +520,28 @@ class WaterRipple {
             return;
         }
 
-        this._computeTextureBoundaries();
+        // Check if effect has exceeded 4 seconds - start aggressive fadeout
+        const effectElapsed = performance.now() - this.effectStartTime;
+        const inFadeoutPhase = this.isEffectActive && effectElapsed > 4000;
 
-        if (this.running || this.undulating) {
-            this._update();
+        // Only recompute texture boundaries when needed (performance optimization)
+        if (this.textureBoundariesDirty) {
+            this._computeTextureBoundaries();
+            this.textureBoundariesDirty = false;
         }
 
-        this._render();
+        // Update ripple simulation if there's activity or in fadeout phase
+        if ((this.running || this.undulating || inFadeoutPhase) && this.isEffectActive) {
+            this._update(inFadeoutPhase);
+
+            // Check activity level to determine if we can go idle
+            this._updateActivityLevel();
+        }
+
+        // Only render if effect is active
+        if (this.isEffectActive) {
+            this._render();
+        }
     }
 
     _computeTextureBoundaries() {
@@ -663,7 +711,7 @@ class WaterRipple {
         gl.disable(gl.BLEND);
     }
 
-    _update() {
+    _update(inFadeoutPhase = false) {
         const gl = this.gl;
 
         gl.viewport(0, 0, this.options.resolution, this.options.resolution);
@@ -682,6 +730,102 @@ class WaterRipple {
         this.bufferReadIndex = 1 - this.bufferReadIndex;
     }
 
+    /**
+     * Start a new effect sequence
+     * Sets up 5-second timeout to clear effect after completion
+     */
+    _startEffect() {
+        // Clear any existing timeout
+        if (this.effectTimeout) {
+            clearTimeout(this.effectTimeout);
+        }
+
+        // Mark effect as active
+        this.isEffectActive = true;
+        this.effectStartTime = performance.now();
+        this.isIdle = false;
+        this.lastActivity = performance.now();
+
+        // Set 5-second timeout to clear effect
+        this.effectTimeout = setTimeout(() => {
+            this._clearEffect();
+        }, 5000);
+
+        console.debug('[WaterRipple] Effect started, will clear in 5 seconds');
+    }
+
+    /**
+     * Clear the effect and stop rendering
+     * Called after 5-second effect duration
+     */
+    _clearEffect() {
+        const gl = this.gl;
+
+        // Clear the ripple textures to reset simulation
+        const resolution = this.options.resolution;
+        const arrayType = this.config.arrayType;
+        const textureData = arrayType ? new arrayType(resolution * resolution * 4) : null;
+
+        for (let i = 0; i < 2; i++) {
+            gl.bindTexture(gl.TEXTURE_2D, this.textures[i]);
+            gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, resolution, resolution, 0, gl.RGBA, this.config.type, textureData);
+        }
+
+        // Mark effect as inactive
+        this.isEffectActive = false;
+        this.running = false;
+        this.isIdle = true;
+
+        console.debug('[WaterRipple] Effect cleared, rendering stopped');
+    }
+
+    /**
+     * Update activity level to detect when simulation has settled
+     * Reads back a sample of pixels from the ripple texture to measure activity
+     */
+    _updateActivityLevel() {
+        const gl = this.gl;
+
+        // Only check every 10 frames for performance
+        if (this.updateCounter % 10 !== 0) {
+            this.updateCounter++;
+            return;
+        }
+        this.updateCounter++;
+
+        // Read a small sample from the center of the texture
+        const sampleSize = 16; // 16x16 pixel sample
+        const resolution = this.options.resolution;
+        const centerX = Math.floor((resolution - sampleSize) / 2);
+        const centerY = Math.floor((resolution - sampleSize) / 2);
+
+        const pixels = new Uint8Array(sampleSize * sampleSize * 4);
+
+        gl.bindFramebuffer(gl.FRAMEBUFFER, this.framebuffers[this.bufferReadIndex]);
+        gl.readPixels(centerX, centerY, sampleSize, sampleSize, gl.RGBA, gl.UNSIGNED_BYTE, pixels);
+
+        // Calculate average absolute height (r channel)
+        let totalActivity = 0;
+        for (let i = 0; i < pixels.length; i += 4) {
+            // r channel contains height, centered at 127 (0.5 in 0-1 range)
+            const height = Math.abs(pixels[i] - 127) / 127;
+            totalActivity += height;
+        }
+
+        this.activityLevel = totalActivity / (sampleSize * sampleSize);
+
+        // Mark as idle if activity is below threshold
+        const wasIdle = this.isIdle;
+        this.isIdle = this.activityLevel < this.options.idleThreshold;
+
+        if (!wasIdle && this.isIdle) {
+            console.debug('[WaterRipple] Simulation settled, going idle');
+            this.lastActivity = performance.now();
+        } else if (!this.isIdle) {
+            this.lastActivity = performance.now();
+        }
+    }
+
     // Public API
 
     /**
@@ -689,8 +833,9 @@ class WaterRipple {
      */
     turnOn() {
         this.visible = true;
-        this.running = true;
         this.canvas.style.display = 'block';
+
+        // Don't automatically start effect - wait for drop() or undulate()
     }
 
     /**
@@ -700,6 +845,20 @@ class WaterRipple {
         this.visible = false;
         this.running = false;
         this.canvas.style.display = 'none';
+
+        // Clear any pending effect timeout
+        if (this.effectTimeout) {
+            clearTimeout(this.effectTimeout);
+            this.effectTimeout = null;
+        }
+
+        // Clear any pending undulate timeouts
+        this.undulateTimeouts.forEach(timeout => clearTimeout(timeout));
+        this.undulateTimeouts = [];
+
+        // Mark as inactive
+        this.isEffectActive = false;
+        this.undulating = false;
     }
 
     /**
@@ -715,12 +874,27 @@ class WaterRipple {
         radius = radius || this.options.dropRadius;
         strength = strength !== undefined ? strength : 0.14;
 
+        // Start effect sequence (or extend existing one)
+        if (!this.isEffectActive) {
+            this._startEffect();
+        } else {
+            // Extend effect duration by resetting the timeout
+            this._startEffect();
+        }
+
+        this.running = true;
+
+        // Account for scaled canvas resolution
+        const scale = this.options.canvasScale;
+        const scaledX = x * scale;
+        const scaledY = y * scale;
+
         const longestSide = Math.max(this.canvas.width, this.canvas.height);
-        radius = radius / longestSide;
+        radius = (radius * scale) / longestSide;
 
         const dropPosition = new Float32Array([
-            (2 * x - this.canvas.width) / longestSide,
-            (this.canvas.height - 2 * y) / longestSide
+            (2 * scaledX - this.canvas.width) / longestSide,
+            (this.canvas.height - 2 * scaledY) / longestSide
         ]);
 
         gl.viewport(0, 0, this.options.resolution, this.options.resolution);
@@ -740,11 +914,18 @@ class WaterRipple {
 
     /**
      * Create a one-time burst of random ripples across the page that fade out naturally
+     * If already undulating, dismisses the new call (no queuing)
      */
     undulate() {
+        // Dismiss new undulate calls if already ongoing (no queuing)
         if (this.undulating) {
-            return; // Already undulating
+            console.debug('[WaterRipple] Undulate already in progress, dismissing new call');
+            return;
         }
+
+        // Clear any pending undulate timeouts from previous calls
+        this.undulateTimeouts.forEach(timeout => clearTimeout(timeout));
+        this.undulateTimeouts = [];
 
         this.undulating = true;
 
@@ -752,8 +933,13 @@ class WaterRipple {
             this.turnOn();
         }
 
-        const width = this.canvas.width;
-        const height = this.canvas.height;
+        // Start effect sequence
+        this._startEffect();
+        this.running = true;
+
+        // Use unscaled coordinates for undulate (already in screen space)
+        const width = window.innerWidth;
+        const height = window.innerHeight;
         const numRipples = 20;
         const maxDelay = 500; // 0.5 seconds range for staggering
 
@@ -765,19 +951,23 @@ class WaterRipple {
             const radius = 20 + Math.random() * 30; // Random radius between 20-50
             const strength = 0.08 + Math.random() * 0.08; // Random strength between 0.08-0.16
 
-            setTimeout(() => {
-                if (this.undulating) {
+            const timeoutId = setTimeout(() => {
+                if (this.undulating && this.isEffectActive) {
                     this.drop(x, y, radius, strength);
                 }
             }, delay);
+
+            this.undulateTimeouts.push(timeoutId);
         }
 
-        // After all ripples are triggered, mark undulation as complete and let them fade naturally
-        // The fade duration is longer to let ripples fully dissipate
-        setTimeout(() => {
+        // After all ripples are triggered, mark undulation as complete
+        // Effect will be cleared by the 5-second timeout from _startEffect()
+        const completionTimeoutId = setTimeout(() => {
             this.undulating = false;
-            // Ripples will naturally fade due to damping in the shader
-        }, maxDelay + 3000); // Wait for all ripples to trigger + 3 seconds to fade
+            console.debug('[WaterRipple] Undulate sequence complete');
+        }, maxDelay + 100); // Wait for all ripples to trigger + small buffer
+
+        this.undulateTimeouts.push(completionTimeoutId);
     }
 
     /**
@@ -789,6 +979,18 @@ class WaterRipple {
         if (this._resizeHandler) {
             window.removeEventListener('resize', this._resizeHandler);
         }
+
+        if (this._resizeTimeout) {
+            clearTimeout(this._resizeTimeout);
+        }
+
+        if (this.effectTimeout) {
+            clearTimeout(this.effectTimeout);
+        }
+
+        // Clear all undulate timeouts
+        this.undulateTimeouts.forEach(timeout => clearTimeout(timeout));
+        this.undulateTimeouts = [];
 
         if (this.canvas && this.canvas.parentNode) {
             this.canvas.parentNode.removeChild(this.canvas);

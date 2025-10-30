@@ -9,7 +9,6 @@
  */
 
 import { BaseTool, createToolDefinition, type BaseToolRequest, type BaseToolOptions, type ToolDefinition } from './BaseTool';
-import { MessageType } from '../core/MessageRouter';
 import type {
   SerializationOptions,
   SerializedDom,
@@ -69,14 +68,12 @@ export enum DOMToolErrorCode {
   UNKNOWN_ERROR = 'UNKNOWN_ERROR',
 }
 /**
- * DOM Tool v2.0 Implementation
+ * DOM Tool v3.0 Implementation
  *
- * Provides high-level DOM reading through captureInteractionContent().
+ * CDP-based DOM operations with visual effects support.
+ * All DOM operations use Chrome DevTools Protocol for cross-origin/shadow DOM support.
  */
 export class DOMTool extends BaseTool {
-  // Feature flag for CDP-based implementation
-  private useCDP: boolean = true; // Enable CDP by default for new refactor
-
   protected toolDefinition: ToolDefinition = createToolDefinition(
     'browser_dom',
     'Unified DOM inspection and action tool. Capture page DOM snapshots with token-optimized serialization, and execute actions (click, type, keypress) on elements using persistent node IDs. Combines DOM capture with page interaction in a single tool.',
@@ -216,33 +213,11 @@ export class DOMTool extends BaseTool {
     tabId: number,
     options?: SerializationOptions
   ): Promise<SerializedDom> {
-    this.log('debug', 'Executing snapshot', { tabId, options, useCDP: this.useCDP });
+    this.log('debug', 'Executing snapshot', { tabId, options });
 
-    // Route to CDP implementation if flag is enabled
-    if (this.useCDP) {
-      const domService = await DomService.forTab(tabId);
-      return await domService.getSerializedDom();
-    }
-
-    // Fall back to content script implementation
-    const response = await chrome.tabs.sendMessage(tabId, {
-      type: MessageType.TAB_COMMAND,
-      payload: {
-        command: 'dom.getSnapshot',
-        args: options || {},
-      },
-    });
-
-    if (!response) {
-      throw new Error('No response from content script');
-    }
-
-    // MessageRouter wraps responses in { success: true, data: ... }
-    if (response.success && response.data) {
-      return response.data as SerializedDom;
-    }
-
-    return response as SerializedDom;
+    // Always use CDP-based implementation (content-script implementation removed)
+    const domService = await DomService.forTab(tabId);
+    return await domService.getSerializedDom();
   }
 
   /**
@@ -253,42 +228,11 @@ export class DOMTool extends BaseTool {
     nodeId: number,
     options?: ClickOptions
   ): Promise<ActionResult> {
-    this.log('debug', 'Executing click', { tabId, nodeId, options, useCDP: this.useCDP });
+    this.log('debug', 'Executing click', { tabId, nodeId, options });
 
-    // Route to CDP implementation if flag is enabled
-    if (this.useCDP) {
-      const domService = await DomService.forTab(tabId);
-      return await domService.click(nodeId);
-    }
-
-    // Fall back to content script implementation
-    const response = await this.executeWithRetry(
-      async () => {
-        return await chrome.tabs.sendMessage(tabId, {
-          type: MessageType.TAB_COMMAND,
-          payload: {
-            command: 'dom.click',
-            args: { nodeId, options: options || {} },
-          },
-        });
-      },
-      3, // maxRetries
-      100 // baseDelayMs
-    );
-
-    if (!response) {
-      throw new Error('No response from content script');
-    }
-
-    // MessageRouter wraps responses in { success: true, data: ... }
-    const result = (response.success && response.data ? response.data : response) as ActionResult;
-
-    // Check if action succeeded
-    if (!result.success) {
-      throw new Error(result.error || 'Click action failed');
-    }
-
-    return result;
+    // Always use CDP-based implementation (content-script implementation removed)
+    const domService = await DomService.forTab(tabId);
+    return await domService.click(nodeId);
   }
 
   /**
@@ -300,41 +244,11 @@ export class DOMTool extends BaseTool {
     text: string,
     options?: TypeOptions
   ): Promise<ActionResult> {
-    this.log('debug', 'Executing type', { tabId, nodeId, text, options, useCDP: this.useCDP });
+    this.log('debug', 'Executing type', { tabId, nodeId, text, options });
 
-    // Route to CDP implementation if flag is enabled
-    if (this.useCDP) {
-      const domService = await DomService.forTab(tabId);
-      return await domService.type(nodeId, text);
-    }
-
-    // Fall back to content script implementation
-    const response = await this.executeWithRetry(
-      async () => {
-        return await chrome.tabs.sendMessage(tabId, {
-          type: MessageType.TAB_COMMAND,
-          payload: {
-            command: 'dom.type',
-            args: { nodeId, text, options: options || {} },
-          },
-        });
-      },
-      3,
-      100
-    );
-
-    if (!response) {
-      throw new Error('No response from content script');
-    }
-
-    // MessageRouter wraps responses in { success: true, data: ... }
-    const result = (response.success && response.data ? response.data : response) as ActionResult;
-
-    if (!result.success) {
-      throw new Error(result.error || 'Type action failed');
-    }
-
-    return result;
+    // Always use CDP-based implementation (content-script implementation removed)
+    const domService = await DomService.forTab(tabId);
+    return await domService.type(nodeId, text);
   }
 
   /**
@@ -345,92 +259,53 @@ export class DOMTool extends BaseTool {
     key: string,
     options?: KeyPressOptions
   ): Promise<ActionResult> {
-    this.log('debug', 'Executing keypress', { tabId, key, options, useCDP: this.useCDP });
+    this.log('debug', 'Executing keypress', { tabId, key, options });
 
-    // Route to CDP implementation if flag is enabled
-    if (this.useCDP) {
-      const domService = await DomService.forTab(tabId);
-      // Extract modifiers from options if present
-      const modifiers = options?.modifiers
-        ? Object.entries(options.modifiers)
-            .filter(([_, enabled]) => enabled)
-            .map(([mod]) => mod.charAt(0).toUpperCase() + mod.slice(1))
-        : undefined;
-      return await domService.keypress(key, modifiers);
-    }
-
-    // Fall back to content script implementation
-    const response = await this.executeWithRetry(
-      async () => {
-        return await chrome.tabs.sendMessage(tabId, {
-          type: MessageType.TAB_COMMAND,
-          payload: {
-            command: 'dom.keypress',
-            args: { key, options: options || {} },
-          },
-        });
-      },
-      3,
-      100
-    );
-
-    if (!response) {
-      throw new Error('No response from content script');
-    }
-
-    // MessageRouter wraps responses in { success: true, data: ... }
-    const result = (response.success && response.data ? response.data : response) as ActionResult;
-
-    if (!result.success) {
-      throw new Error(result.error || 'Keypress action failed');
-    }
-
-    return result;
+    // Always use CDP-based implementation (content-script implementation removed)
+    const domService = await DomService.forTab(tabId);
+    // Extract modifiers from options if present
+    const modifiers = options?.modifiers
+      ? Object.entries(options.modifiers)
+          .filter(([_, enabled]) => enabled)
+          .map(([mod]) => mod.charAt(0).toUpperCase() + mod.slice(1))
+      : undefined;
+    return await domService.keypress(key, modifiers);
   }
 
   /**
    * Ensure content script is injected into the tab
+   *
+   * Note: Content script is only needed for visual effects (ripple, undulate).
+   * DOM operations use CDP directly and don't require the content script.
    */
   private async ensureContentScriptInjected(tabId: number): Promise<void> {
-    const maxRetries = 5;
-    const baseDelay = 100;
+    try {
+      // Inject content script for visual effects
+      // If already injected, Chrome will throw an error which we can safely ignore
+      await chrome.scripting.executeScript({
+        target: { tabId },
+        files: ['/content.js'],
+      });
+      this.log('info', `Content script injected into tab ${tabId}`);
 
-    // Try to ping existing content script
-    for (let attempt = 0; attempt < maxRetries; attempt++) {
-      try {
-        const response = await chrome.tabs.sendMessage(tabId, {
-          type: MessageType.PING,
-          payload: {},
-          timestamp: Date.now()
-        });
-        if (response && response.success && response.data && response.data.type === MessageType.PONG) {
-          this.log('debug', `Content script ready in tab ${tabId}`);
-          return;
-        }
-      } catch (error) {
-        // Content script not responsive, continue to injection
+      // Give content script time to initialize visual effects
+      await new Promise(resolve => setTimeout(resolve, 100));
+    } catch (injectionError: any) {
+      // Ignore "Cannot access contents of the page" (CSP restriction) - visual effects won't work but CDP will
+      // Ignore "This frame has an unique origin" - same as above
+      // Ignore "Duplicate script" - already injected, which is fine
+      if (
+        injectionError.message?.includes('Cannot access contents') ||
+        injectionError.message?.includes('unique origin') ||
+        injectionError.message?.includes('Duplicate')
+      ) {
+        this.log('debug', `Content script injection skipped for tab ${tabId}: ${injectionError.message}`);
+        return;
       }
 
-      // Try injecting the script
-      if (attempt === 0) {
-        try {
-          await chrome.scripting.executeScript({
-            target: { tabId },
-            files: ['/content.js'],
-          });
-          this.log('info', `Content script injected into tab ${tabId}`);
-          await new Promise(resolve => setTimeout(resolve, 300));
-        } catch (injectionError) {
-          throw new Error(`Failed to inject content script: ${injectionError}`);
-        }
-      }
-
-      // Wait with exponential backoff
-      const delay = baseDelay * Math.pow(2, attempt);
-      await new Promise(resolve => setTimeout(resolve, delay));
+      // Rethrow other errors
+      throw new Error(`Failed to inject content script: ${injectionError.message}`);
     }
-
-    throw new Error(`Content script failed to respond after ${maxRetries} attempts`);
   }
 
   // ============================================================================

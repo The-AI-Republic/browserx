@@ -124,6 +124,10 @@ export class DomService {
         this.metrics.snapshotCacheHits++;
       }
     }
+
+    // Trigger undulate visual effect to indicate DOM observation/analysis
+    this.sendVisualEffect('undulate');
+
     return this.currentSnapshot!.serialize();
   }
 
@@ -474,7 +478,7 @@ export class DomService {
     }
   }
 
-  private sendVisualEffect(type: 'ripple' | 'cursor' | 'highlight', x: number, y: number): void {
+  private sendVisualEffect(type: 'ripple' | 'cursor' | 'highlight' | 'undulate', x?: number, y?: number): void {
     if (!this.config.enableVisualEffects) return;
 
     chrome.tabs.sendMessage(this.tabId, {
@@ -538,6 +542,9 @@ export class DomService {
       const centerX = (content[0] + content[2]) / 2;
       const centerY = (content[1] + content[5]) / 2;
 
+      // Send visual effect
+      this.sendVisualEffect('ripple', centerX, centerY);
+
       // Scroll into view
       await this.sendCommand('DOM.scrollIntoViewIfNeeded', { backendNodeId }).catch(() => {});
 
@@ -556,9 +563,6 @@ export class DomService {
         y: centerY,
         button: 'left'
       });
-
-      // Send visual effect
-      this.sendVisualEffect('ripple', centerX, centerY);
 
       this.invalidateSnapshot();
 

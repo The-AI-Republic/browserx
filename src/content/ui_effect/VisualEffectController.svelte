@@ -176,6 +176,88 @@
 
     document.addEventListener(VISUAL_EFFECT_EVENT_NAME, visualEffectHandler);
 
+    // Listen for direct visual effect messages from DomService (CDP-based)
+    const directVisualEffectHandler = (event: Event) => {
+      const customEvent = event as CustomEvent;
+      const { type, x, y } = customEvent.detail;
+
+      console.log('[VisualEffectController] Direct visual effect received:', { type, x, y });
+
+      try {
+        // Handle different effect types
+        if (type === 'ripple') {
+          // Ripple effect for click actions - show overlay, animate cursor
+          // The ripple will be triggered automatically when cursor arrives at target
+
+          // 1. Ensure overlay is visible for agent actions
+          overlayState.update(state => {
+            if (!state.agentSessionActive) {
+              return {
+                ...state,
+                visible: true,
+                agentSessionActive: true,
+                takeoverActive: false,
+              };
+            }
+            return state;
+          });
+
+          // 2. Ensure water ripple canvas is visible
+          if (waterRipple && config.enableRippleEffects && !waterRipple.visible) {
+            waterRipple.turnOn();
+          }
+
+          // 3. Animate cursor to target position
+          // The cursor will automatically trigger ripple when it arrives via 'browserx:trigger-ripple' event
+          if (cursorAnimatorRef && config.enableCursorAnimation && x !== undefined && y !== undefined) {
+            console.log('[VisualEffectController] Animating cursor to:', x, y);
+            cursorAnimatorRef.animateTo(x, y);
+          } else if (!cursorAnimatorRef || !config.enableCursorAnimation) {
+            // If cursor animation is disabled, trigger ripple immediately
+            if (waterRipple && config.enableRippleEffects) {
+              waterRipple.drop(
+                x,
+                y,
+                config.rippleConfig?.radius ?? 20,
+                config.rippleConfig?.strength ?? 0.5
+              );
+            }
+          }
+
+          notifyStateChange();
+        } else if (type === 'undulate') {
+          // Undulate effect (DOM observation/analysis) - no coordinates needed
+
+          // Ensure overlay is visible during DOM analysis
+          overlayState.update(state => {
+            if (!state.agentSessionActive) {
+              return {
+                ...state,
+                visible: true,
+                agentSessionActive: true,
+                takeoverActive: false,
+              };
+            }
+            return state;
+          });
+
+          // Trigger undulate effect
+          if (waterRipple && config.enableRippleEffects) {
+            if (!waterRipple.visible) {
+              waterRipple.turnOn();
+            }
+            waterRipple.undulate();
+          }
+
+          notifyStateChange();
+        }
+      } catch (error) {
+        handleError(`Direct ${type} effect error`, error);
+      }
+    };
+
+    document.addEventListener('browserx:show-visual-effect', directVisualEffectHandler);
+
     // Listen for ripple trigger events from cursor animator
     const rippleHandler = (event: Event) => {
       const customEvent = event as CustomEvent;
@@ -212,6 +294,7 @@
     // Cleanup function
     eventListenerCleanup = () => {
       document.removeEventListener(VISUAL_EFFECT_EVENT_NAME, visualEffectHandler);
+      document.removeEventListener('browserx:show-visual-effect', directVisualEffectHandler);
       document.removeEventListener('browserx:trigger-ripple', rippleHandler);
       document.removeEventListener('browserx:stop-agent', stopAgentHandler);
     };

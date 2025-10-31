@@ -384,44 +384,6 @@ export class Session {
   }
 
   /**
-   * Record conversation items (messages, tool calls, etc.)
-   */
-  async recordConversationItems(items: any[]): Promise<void> {
-    const timestamp = Date.now();
-
-    for (const item of items) {
-      if (item.role === 'assistant' || item.role === 'user' || item.role === 'system') {
-        const text = this.extractTextFromItem(item);
-        if (text) {
-          await this.addToHistory({
-            timestamp,
-            text,
-            type: item.role === 'assistant' ? 'agent' : item.role === 'system' ? 'system' : 'user',
-          });
-        }
-      }
-    }
-  }
-
-  /**
-   * Extract text content from conversation items
-   */
-  private extractTextFromItem(item: any): string {
-    if (typeof item.content === 'string') {
-      return item.content;
-    }
-
-    if (Array.isArray(item.content)) {
-      return item.content
-        .filter((c: any) => c.type === 'text' || c.type === 'input_text' || c.type === 'output_text')
-        .map((c: any) => c.text)
-        .join(' ');
-    }
-
-    return '';
-  }
-
-  /**
    * Get pending user input during turn execution
    * Delegates to ActiveTurn if turn is active, otherwise returns empty array
    */

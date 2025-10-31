@@ -523,7 +523,7 @@ export class TaskRunner {
   private async buildNormalTurnInput(pendingInput: ResponseItem[]): Promise<ResponseItem[]> {
     const turnInput = await this.session.buildTurnInputWithHistory(pendingInput);
     if (pendingInput.length > 0) {
-      await this.session.recordConversationItems(pendingInput);
+      await this.session.recordConversationItemsDual(pendingInput);
     }
     return turnInput as ResponseItem[];
   }

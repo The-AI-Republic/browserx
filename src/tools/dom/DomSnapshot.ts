@@ -152,12 +152,6 @@ export class DomSnapshot implements IDomSnapshot {
 
     this.stats.serializationDuration = Date.now() - start;
 
-    // test>>
-    console.log("[DomSnapshot Test] Virtual DOM:", JSON.stringify(this.virtualDom, null, 2));
-    console.log("[DomSnapshot Test] Tree Before Flattern:", JSON.stringify(result.tree, null, 2));
-    console.log("[DomSnapshot Test] SerializedDom:", JSON.stringify(this._serialized, null, 2));
-    // <<test
-
     return this._serialized;
   }
 

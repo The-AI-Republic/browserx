@@ -132,12 +132,30 @@ export class DOMTool extends BaseTool {
   }
 
   /**
+   * Override execute to inject action into metadata
+   */
+  async execute(request: BaseToolRequest, options?: BaseToolOptions): Promise<any> {
+    const typedRequest = request as DOMToolRequest;
+
+    // Inject action into metadata so it's available in the response
+    const enrichedOptions = {
+      ...options,
+      metadata: {
+        ...options?.metadata,
+        action: typedRequest.action,
+      },
+    };
+
+    return super.execute(request, enrichedOptions);
+  }
+
+  /**
    * Execute DOM tool action - routes to v3.0 implementation
    */
   protected async executeImpl(
     request: BaseToolRequest,
     options?: BaseToolOptions
-  ): Promise<DOMToolResponse> {
+  ): Promise<SerializedDom | ActionResult> {
     // Validate Chrome context
     this.validateChromeContext();
 
@@ -159,43 +177,18 @@ export class DOMTool extends BaseTool {
 
     const tabId = targetTab.id!;
 
-    // Route by action type
-    const startTime = Date.now();
-    try {
-      let data: SerializedDom | ActionResult;
-
-      switch (typedRequest.action) {
-        case 'snapshot':
-          data = await this.executeSnapshot(tabId, typedRequest.options);
-          break;
-        case 'click':
-          data = await this.executeClick(tabId, typedRequest.node_id!, typedRequest.options);
-          break;
-        case 'type':
-          data = await this.executeType(tabId, typedRequest.node_id!, typedRequest.text!, typedRequest.options);
-          break;
-        case 'keypress':
-          data = await this.executeKeypress(tabId, typedRequest.key!, typedRequest.options);
-          break;
-        default:
-          throw new Error(`Unknown action: ${typedRequest.action}`);
-      }
-
-      const duration = Date.now() - startTime;
-
-      return {
-        success: true,
-        data,
-        metadata: {
-          duration,
-          toolName: 'browser_dom',
-          tabId,
-          retryCount: 0,
-        },
-      };
-    } catch (error) {
-      const duration = Date.now() - startTime;
-      return this.handleError(error, typedRequest.action, tabId, duration);
+    // Route by action type - return raw data, BaseTool.execute() will wrap it
+    switch (typedRequest.action) {
+      case 'snapshot':
+        return await this.executeSnapshot(tabId, typedRequest.options);
+      case 'click':
+        return await this.executeClick(tabId, typedRequest.node_id!, typedRequest.options);
+      case 'type':
+        return await this.executeType(tabId, typedRequest.node_id!, typedRequest.text!, typedRequest.options);
+      case 'keypress':
+        return await this.executeKeypress(tabId, typedRequest.key!, typedRequest.options);
+      default:
+        throw new Error(`Unknown action: ${typedRequest.action}`);
     }
   }
 

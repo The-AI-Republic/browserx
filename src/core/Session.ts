@@ -21,6 +21,7 @@ import { SessionState, type SessionStateExport } from './session/state/SessionSt
 import { type SessionServices, createSessionServices } from './session/state/SessionServices';
 import { ActiveTurn } from './session/state/ActiveTurn';
 import type { TokenUsageInfo, RunningTask, RateLimitSnapshot, TurnAbortReason, InitialHistory } from './session/state/types';
+import { isDOMSnapshotOutput, compressSnapshot } from './session/state/SnapshotCompressor';
 
 /**
  * Execution state of the session
@@ -43,7 +44,6 @@ export class Session {
   private services: SessionServices | null = null; // Service collection
   private activeTurn: ActiveTurn | null = null; // Active turn management
   private turnContext: TurnContext;
-  private messageCount: number = 0;
   private eventEmitter: ((event: Event) => Promise<void>) | null = null;
   private isPersistent: boolean = true;
   private toolRegistry: ToolRegistry | null = null; // Tool registry from BrowserxAgent
@@ -183,12 +183,11 @@ export class Session {
   }
 
   /**
-   * Add a message to history using RolloutRecorder
+   * Add a message to history using dual persistence
+   * Legacy API - converts simple text entry to ResponseItem
    */
   async addToHistory(entry: { timestamp: number; text: string; type: 'user' | 'agent' | 'system' }): Promise<void> {
-    this.messageCount++;
-
-    // Record in SessionState
+    // Convert to ResponseItem
     const responseItem: ResponseItem = {
       type: 'message',
       role: entry.type === 'user' ? 'user' : entry.type === 'system' ? 'system' : 'assistant',
@@ -197,21 +196,9 @@ export class Session {
         text: entry.text
       }],
     };
-    this.sessionState.recordItems([responseItem]);
 
-    // Persist to RolloutRecorder if available
-    if (this.services?.rollout) {
-      const rolloutItems: RolloutItem[] = [{
-        type: 'response_item',
-        payload: responseItem
-      }];
-
-      try {
-        await this.services.rollout.recordItems(rolloutItems);
-      } catch (error) {
-        console.error('Failed to persist message to rollout:', error);
-      }
-    }
+    // Use recordConversationItemsDual for dual persistence
+    await this.recordConversationItemsDual([responseItem]);
   }
 
   /**
@@ -238,14 +225,13 @@ export class Session {
    */
   clearHistory(): void {
     this.sessionState = new SessionState();
-    this.messageCount = 0;
   }
 
   /**
-   * Get current message count
+   * Get current message count (derived from session state)
    */
   getMessageCount(): number {
-    return this.messageCount;
+    return this.sessionState.historySnapshot().length;
   }
 
 
@@ -260,7 +246,7 @@ export class Session {
   } {
     return {
       conversationId: this.conversationId,
-      messageCount: this.messageCount,
+      messageCount: this.getMessageCount(),
       startTime: this.sessionState.getConversationHistory().metadata?.startTime || Date.now(),
       currentModel: this.turnContext?.getModel?.() || 'gpt-5',
     };
@@ -276,7 +262,6 @@ export class Session {
     metadata: {
       created: number;
       lastAccessed: number;
-      messageCount: number;
     };
   } {
     return {
@@ -285,7 +270,6 @@ export class Session {
       metadata: {
         created: this.sessionState.getConversationHistory().metadata?.startTime || Date.now(),
         lastAccessed: Date.now(),
-        messageCount: this.messageCount,
       },
     };
   }
@@ -299,7 +283,7 @@ export class Session {
     metadata: {
       created: number;
       lastAccessed: number;
-      messageCount: number;
+      messageCount?: number; // Optional for backward compatibility
     };
   }, services?: SessionServices, toolRegistry?: ToolRegistry): Session {
     // Create session with resumed history mode (no rollout items since we're importing directly)
@@ -309,10 +293,9 @@ export class Session {
     // Import SessionState
     session.sessionState = SessionState.import(data.state);
 
-    // Set metadata
+    // Set metadata (messageCount is now derived from sessionState, not persisted)
     Object.assign(session, {
       conversationId: data.id,
-      messageCount: data.metadata.messageCount || 0,
     });
 
     return session;
@@ -398,44 +381,6 @@ export class Session {
         type: 'user',
       });
     }
-  }
-
-  /**
-   * Record conversation items (messages, tool calls, etc.)
-   */
-  async recordConversationItems(items: any[]): Promise<void> {
-    const timestamp = Date.now();
-
-    for (const item of items) {
-      if (item.role === 'assistant' || item.role === 'user' || item.role === 'system') {
-        const text = this.extractTextFromItem(item);
-        if (text) {
-          await this.addToHistory({
-            timestamp,
-            text,
-            type: item.role === 'assistant' ? 'agent' : item.role === 'system' ? 'system' : 'user',
-          });
-        }
-      }
-    }
-  }
-
-  /**
-   * Extract text content from conversation items
-   */
-  private extractTextFromItem(item: any): string {
-    if (typeof item.content === 'string') {
-      return item.content;
-    }
-
-    if (Array.isArray(item.content)) {
-      return item.content
-        .filter((c: any) => c.type === 'text' || c.type === 'input_text' || c.type === 'output_text')
-        .map((c: any) => c.text)
-        .join(' ');
-    }
-
-    return '';
   }
 
   /**
@@ -526,7 +471,6 @@ export class Session {
       const kept = items.slice(-keepCount);
       this.sessionState = new SessionState();
       this.sessionState.recordItems(kept);
-      this.messageCount = kept.length;
     }
   }
 
@@ -574,7 +518,7 @@ export class Session {
       // For now, we'll return basic info
       rolloutStats = {
         conversationId: this.conversationId,
-        messageCount: this.messageCount,
+        messageCount: this.getMessageCount(),
         hasRollout: true
       };
     } catch (error) {
@@ -633,7 +577,7 @@ export class Session {
         const closeEvent: EventMsg = {
           type: 'BackgroundEvent',
           data: {
-            message: `Session closed: ${this.conversationId} (${this.messageCount} messages)`
+            message: `Session closed: ${this.conversationId} (${this.getMessageCount()} messages)`
           }
         };
 
@@ -1254,6 +1198,9 @@ export class Session {
    * Converts ResponseItems to RolloutItems and persists them via RolloutRecorder.
    * This is used to save conversation history to persistent storage.
    *
+   * T011: Enhanced to compress DOM snapshots immediately before persistence
+   * Rollout storage never needs uncompressed snapshots (not directly read by LLM)
+   *
    * @param items Response items to persist
    * @private
    */
@@ -1262,8 +1209,12 @@ export class Session {
       return;
     }
 
+    // Logic 2: Compress DOM snapshots immediately before persistence
+    // Rollout is never directly read by LLM, so we compress all snapshots
+    const compressedItems = items.map((item) => compressSnapshot(item));
+
     // Convert ResponseItems to RolloutItems
-    const rolloutItems: RolloutItem[] = items.map((item) => ({
+    const rolloutItems: RolloutItem[] = compressedItems.map((item) => ({
       type: 'response_item',
       payload: item,
     }));
@@ -1282,9 +1233,19 @@ export class Session {
    * Records ResponseItems to both SessionState (in-memory history) and
    * RolloutRecorder (persistent storage).
    *
+   * T010: Enhanced with inline compression logic for DOM snapshots
+   *
    * @param items Response items to record
    */
   async recordConversationItemsDual(items: ResponseItem[]): Promise<void> {
+    // Logic 1: SessionState (in-memory)
+    // If incoming items contain any DOM snapshot output, compress previous snapshot in history
+    // This keeps the latest snapshot fresh for LLM reasoning
+    if (items.some(item => isDOMSnapshotOutput(item))) {
+      // Compress the previous DOM snapshot before recording the new one
+      this.sessionState.compressPreviousDomSnapshot();
+    }
+
     // Record to SessionState (in-memory history)
     this.sessionState.recordItems(items);
 

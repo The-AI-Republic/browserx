@@ -9,7 +9,6 @@
  */
 
 import { BaseTool, createToolDefinition, type BaseToolRequest, type BaseToolOptions, type ToolDefinition } from './BaseTool';
-import { MessageType } from '../core/MessageRouter';
 import type {
   SerializationOptions,
   SerializedDom,
@@ -18,6 +17,7 @@ import type {
   KeyPressOptions,
   ActionResult,
 } from '../types/domTool';
+import { DomService } from './dom/DomService';
 
 // ============================================================================
 // Type Definitions for v3.0 Wrapper
@@ -29,7 +29,7 @@ import type {
 export interface DOMToolRequest {
   action: 'snapshot' | 'click' | 'type' | 'keypress';
   tab_id?: number;
-  node_id?: string;
+  node_id?: number; // Numeric CDP nodeId
   text?: string;
   key?: string;
   options?: any;
@@ -68,9 +68,10 @@ export enum DOMToolErrorCode {
   UNKNOWN_ERROR = 'UNKNOWN_ERROR',
 }
 /**
- * DOM Tool v2.0 Implementation
+ * DOM Tool v3.0 Implementation
  *
- * Provides high-level DOM reading through captureInteractionContent().
+ * CDP-based DOM operations with visual effects support.
+ * All DOM operations use Chrome DevTools Protocol for cross-origin/shadow DOM support.
  */
 export class DOMTool extends BaseTool {
   protected toolDefinition: ToolDefinition = createToolDefinition(
@@ -87,8 +88,8 @@ export class DOMTool extends BaseTool {
         description: 'Target tab ID (optional, defaults to active tab)',
       },
       node_id: {
-        type: 'string',
-        description: 'Target element node ID - 8-character alphanumeric identifier from snapshot (required for click and type actions). Expected format: 8 alphanumeric characters.',
+        type: 'number',
+        description: 'Target element node ID from snapshot (required for click and type actions). This is a numeric identifier corresponding to the node_id field in the serialized DOM. Example: 1469, 1537, etc. Special values: -1 for window-level scroll, -2 for document-level keypress.',
       },
       text: {
         type: 'string',
@@ -100,7 +101,7 @@ export class DOMTool extends BaseTool {
       },
       options: {
         type: 'object',
-        description: 'Action-specific options. For type action: { clearFirst?: boolean, speed?: number, commit?: "change"|"enter", blur?: boolean }. commit controls input finalization: "change" (default, fires change event) or "enter" (appends Enter keystroke). For click: { button?: "left"|"right"|"middle", scrollIntoView?: boolean }. For keypress: { modifiers?: { ctrl?: boolean, shift?: boolean, alt?: boolean, meta?: boolean } }. For snapshot: { includeValues?: boolean, includeMetadata?: boolean }.',
+        description: 'Action-specific options. For type action: { clearFirst?: boolean, speed?: number, commit?: "change"|"enter", blur?: boolean }. commit controls input finalization: "change" (default, fires change event) or "enter" (appends Enter keystroke). For click: { button?: "left"|"right"|"middle", scrollIntoView?: boolean }. For keypress: { modifiers?: { ctrl?: boolean, shift?: boolean, alt?: boolean, meta?: boolean } }. For snapshot: { includeValues?: boolean, metadata?: { includeAriaLabel?: boolean, includeText?: boolean, includeValue?: boolean, includeInputType?: boolean, includeHint?: boolean, includeBbox?: boolean, includeStates?: boolean, includeHref?: boolean } }.',
       },
     },
     {
@@ -158,9 +159,6 @@ export class DOMTool extends BaseTool {
 
     const tabId = targetTab.id!;
 
-    // Ensure content script is injected
-    await this.ensureContentScriptInjected(tabId);
-
     // Route by action type
     const startTime = Date.now();
     try {
@@ -214,24 +212,9 @@ export class DOMTool extends BaseTool {
   ): Promise<SerializedDom> {
     this.log('debug', 'Executing snapshot', { tabId, options });
 
-    const response = await chrome.tabs.sendMessage(tabId, {
-      type: MessageType.TAB_COMMAND,
-      payload: {
-        command: 'dom.getSnapshot',
-        args: options || {},
-      },
-    });
-
-    if (!response) {
-      throw new Error('No response from content script');
-    }
-
-    // MessageRouter wraps responses in { success: true, data: ... }
-    if (response.success && response.data) {
-      return response.data as SerializedDom;
-    }
-
-    return response as SerializedDom;
+    // Always use CDP-based implementation (content-script implementation removed)
+    const domService = await DomService.forTab(tabId);
+    return await domService.getSerializedDom();
   }
 
   /**
@@ -239,38 +222,14 @@ export class DOMTool extends BaseTool {
    */
   private async executeClick(
     tabId: number,
-    nodeId: string,
+    nodeId: number,
     options?: ClickOptions
   ): Promise<ActionResult> {
     this.log('debug', 'Executing click', { tabId, nodeId, options });
 
-    const response = await this.executeWithRetry(
-      async () => {
-        return await chrome.tabs.sendMessage(tabId, {
-          type: MessageType.TAB_COMMAND,
-          payload: {
-            command: 'dom.click',
-            args: { nodeId, options: options || {} },
-          },
-        });
-      },
-      3, // maxRetries
-      100 // baseDelayMs
-    );
-
-    if (!response) {
-      throw new Error('No response from content script');
-    }
-
-    // MessageRouter wraps responses in { success: true, data: ... }
-    const result = (response.success && response.data ? response.data : response) as ActionResult;
-
-    // Check if action succeeded
-    if (!result.success) {
-      throw new Error(result.error || 'Click action failed');
-    }
-
-    return result;
+    // Always use CDP-based implementation (content-script implementation removed)
+    const domService = await DomService.forTab(tabId);
+    return await domService.click(nodeId);
   }
 
   /**
@@ -278,38 +237,15 @@ export class DOMTool extends BaseTool {
    */
   private async executeType(
     tabId: number,
-    nodeId: string,
+    nodeId: number,
     text: string,
     options?: TypeOptions
   ): Promise<ActionResult> {
     this.log('debug', 'Executing type', { tabId, nodeId, text, options });
 
-    const response = await this.executeWithRetry(
-      async () => {
-        return await chrome.tabs.sendMessage(tabId, {
-          type: MessageType.TAB_COMMAND,
-          payload: {
-            command: 'dom.type',
-            args: { nodeId, text, options: options || {} },
-          },
-        });
-      },
-      3,
-      100
-    );
-
-    if (!response) {
-      throw new Error('No response from content script');
-    }
-
-    // MessageRouter wraps responses in { success: true, data: ... }
-    const result = (response.success && response.data ? response.data : response) as ActionResult;
-
-    if (!result.success) {
-      throw new Error(result.error || 'Type action failed');
-    }
-
-    return result;
+    // Always use CDP-based implementation (content-script implementation removed)
+    const domService = await DomService.forTab(tabId);
+    return await domService.type(nodeId, text);
   }
 
   /**
@@ -322,77 +258,15 @@ export class DOMTool extends BaseTool {
   ): Promise<ActionResult> {
     this.log('debug', 'Executing keypress', { tabId, key, options });
 
-    const response = await this.executeWithRetry(
-      async () => {
-        return await chrome.tabs.sendMessage(tabId, {
-          type: MessageType.TAB_COMMAND,
-          payload: {
-            command: 'dom.keypress',
-            args: { key, options: options || {} },
-          },
-        });
-      },
-      3,
-      100
-    );
-
-    if (!response) {
-      throw new Error('No response from content script');
-    }
-
-    // MessageRouter wraps responses in { success: true, data: ... }
-    const result = (response.success && response.data ? response.data : response) as ActionResult;
-
-    if (!result.success) {
-      throw new Error(result.error || 'Keypress action failed');
-    }
-
-    return result;
-  }
-
-  /**
-   * Ensure content script is injected into the tab
-   */
-  private async ensureContentScriptInjected(tabId: number): Promise<void> {
-    const maxRetries = 5;
-    const baseDelay = 100;
-
-    // Try to ping existing content script
-    for (let attempt = 0; attempt < maxRetries; attempt++) {
-      try {
-        const response = await chrome.tabs.sendMessage(tabId, {
-          type: MessageType.PING,
-          payload: {},
-          timestamp: Date.now()
-        });
-        if (response && response.success && response.data && response.data.type === MessageType.PONG) {
-          this.log('debug', `Content script ready in tab ${tabId}`);
-          return;
-        }
-      } catch (error) {
-        // Content script not responsive, continue to injection
-      }
-
-      // Try injecting the script
-      if (attempt === 0) {
-        try {
-          await chrome.scripting.executeScript({
-            target: { tabId },
-            files: ['/content.js'],
-          });
-          this.log('info', `Content script injected into tab ${tabId}`);
-          await new Promise(resolve => setTimeout(resolve, 300));
-        } catch (injectionError) {
-          throw new Error(`Failed to inject content script: ${injectionError}`);
-        }
-      }
-
-      // Wait with exponential backoff
-      const delay = baseDelay * Math.pow(2, attempt);
-      await new Promise(resolve => setTimeout(resolve, delay));
-    }
-
-    throw new Error(`Content script failed to respond after ${maxRetries} attempts`);
+    // Always use CDP-based implementation (content-script implementation removed)
+    const domService = await DomService.forTab(tabId);
+    // Extract modifiers from options if present
+    const modifiers = options?.modifiers
+      ? Object.entries(options.modifiers)
+          .filter(([_, enabled]) => enabled)
+          .map(([mod]) => mod.charAt(0).toUpperCase() + mod.slice(1))
+      : undefined;
+    return await domService.keypress(key, modifiers);
   }
 
   // ============================================================================
@@ -425,20 +299,20 @@ export class DOMTool extends BaseTool {
         return null; // Only action is required
 
       case 'click':
-        if (!req.node_id || typeof req.node_id !== 'string') {
-          return 'node_id is required for click action';
+        if (req.node_id === undefined || typeof req.node_id !== 'number') {
+          return 'node_id is required for click action and must be a number';
         }
-        if (!/^[A-Za-z0-9]{8}$/.test(req.node_id)) {
-          return 'node_id must be 8 alphanumeric characters';
+        if (!Number.isInteger(req.node_id)) {
+          return 'node_id must be an integer';
         }
         return null;
 
       case 'type':
-        if (!req.node_id || typeof req.node_id !== 'string') {
-          return 'node_id is required for type action';
+        if (req.node_id === undefined || typeof req.node_id !== 'number') {
+          return 'node_id is required for type action and must be a number';
         }
-        if (!/^[A-Za-z0-9]{8}$/.test(req.node_id)) {
-          return 'node_id must be 8 alphanumeric characters';
+        if (!Number.isInteger(req.node_id)) {
+          return 'node_id must be an integer';
         }
         if (!req.text || typeof req.text !== 'string') {
           return 'text is required for type action';

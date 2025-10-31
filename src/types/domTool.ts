@@ -9,126 +9,48 @@
  */
 
 // ============================================================================
-// Data Structures
+// Constants
 // ============================================================================
 
 /**
- * Virtual DOM node representing a single element with semantic metadata
+ * Special nodeId for window-level scroll actions
+ * Use this when calling scroll() on the entire window
  */
-export interface VirtualNode {
-  /** Unique identifier: 8 random alphanumeric characters (A-Z, a-z, 0-9), e.g., "aB3xZ9k1" */
-  node_id: string;
-
-  /** HTML tag name (lowercase) */
-  tag: string;
-
-  /** ARIA role (explicit or implicit) */
-  role?: string;
-
-  /** ARIA label or computed accessible name (max 250 chars) */
-  "aria-label"?: string;
-
-  /** Visible text content (max 500 chars) */
-  text?: string;
-
-  /** Current value for form inputs (privacy-controlled) */
-  value?: string;
-
-  /** Visibility status */
-  visible: boolean;
-
-  /** Child nodes in DOM tree order */
-  children?: VirtualNode[];
-
-  /** First-level iframe content */
-  iframe?: VirtualNode;
-
-  /** First-level shadow DOM content */
-  shadowDom?: VirtualNode;
-
-  /** Additional metadata for enhanced context */
-  metadata?: VirtualNodeMetadata;
-}
+export const NODE_ID_WINDOW = -1;
 
 /**
- * Additional metadata for VirtualNode
+ * Special nodeId for document-level keyboard actions
+ * Use this when calling keypress() without a specific target element
  */
-export interface VirtualNodeMetadata {
-  /** Element is in current viewport */
-  inViewport?: boolean;
-
-  /** Bounding box coordinates (viewport-relative) */
-  boundingBox?: {
-    x: number;
-    y: number;
-    width: number;
-    height: number;
-  };
-
-  /** Containing landmark region */
-  region?: string;
-
-  /** Element states (checked, disabled, expanded, etc.) */
-  states?: Record<string, boolean | string>;
-
-  /** Link href (for anchors) */
-  href?: string;
-
-  /** Input type (for input elements) */
-  inputType?: string;
-
-  /** Placeholder text (for inputs) */
-  placeholder?: string;
-
-  /** HTML id attribute (for stable matching) */
-  htmlId?: string;
-
-  /** Test ID attributes */
-  testId?: string;
-
-  /** Tree path from root */
-  treePath?: string;
-}
+export const NODE_ID_DOCUMENT = -2;
 
 /**
- * Immutable snapshot of page DOM at a specific point in time
+ * DOM Node Type Constants (from W3C DOM specification)
+ * https://developer.mozilla.org/en-US/docs/Web/API/Node/nodeType
+ *
+ * These constants represent the type of DOM node in the VirtualNode tree.
+ * Most commonly used are:
+ * - NODE_TYPE_ELEMENT (1): HTML elements like <div>, <button>, etc.
+ * - NODE_TYPE_TEXT (3): Text content within elements
+ * - NODE_TYPE_DOCUMENT_FRAGMENT (11): Shadow DOM roots
  */
-export interface DomSnapshot {
-  /** Root of the virtual DOM tree */
-  readonly virtualDom: VirtualNode;
+export const NODE_TYPE_ELEMENT = 1;
+export const NODE_TYPE_ATTRIBUTE = 2;
+export const NODE_TYPE_TEXT = 3;
+export const NODE_TYPE_CDATA_SECTION = 4;
+export const NODE_TYPE_ENTITY_REFERENCE = 5; // Deprecated
+export const NODE_TYPE_ENTITY = 6; // Deprecated
+export const NODE_TYPE_PROCESSING_INSTRUCTION = 7;
+export const NODE_TYPE_COMMENT = 8;
+export const NODE_TYPE_DOCUMENT = 9;
+export const NODE_TYPE_DOCUMENT_TYPE = 10;
+export const NODE_TYPE_DOCUMENT_FRAGMENT = 11;
+export const NODE_TYPE_NOTATION = 12; // Deprecated
 
-  /** ISO 8601 timestamp */
-  readonly timestamp: string;
+// ============================================================================
+// Data Structures
+// ============================================================================
 
-  /** Page metadata */
-  readonly context: PageContext;
-
-  /** Snapshot statistics */
-  readonly stats: SnapshotStats;
-
-  /**
-   * Get real DOM element by node_id
-   * @returns Element or null if not found/detached
-   */
-  getRealElement(nodeId: string): Element | null;
-
-  /**
-   * Get node_id for a real DOM element
-   * @returns node_id or null if not in snapshot
-   */
-  getNodeId(element: Element): string | null;
-
-  /**
-   * Check if snapshot is still valid
-   * Performs sampling check on random subset of elements
-   */
-  isValid(): boolean;
-
-  /**
-   * Serialize virtual DOM to LLM-friendly JSON
-   */
-  serialize(options?: SerializationOptions): SerializedDom;
-}
 
 /**
  * Page context metadata
@@ -158,6 +80,8 @@ export interface SnapshotStats {
 
 /**
  * Flattened, token-optimized DOM representation for LLM
+ *
+ * @version 3.0.0 - T030: Normalized field names with snake_case convention
  */
 export interface SerializedDom {
   page: {
@@ -175,25 +99,74 @@ export interface SerializedDom {
       hostId: string;
       body: SerializedNode;
     }>;
+    /** Compaction metrics for debugging (optional) */
+    metrics?: {
+      total_nodes: number;
+      serialized_nodes: number;
+      token_reduction_rate: number;
+      compaction_score: number;
+    };
+    /** Collection-level state arrays (P3.5 MetadataBucketer) */
+    states?: {
+      disabled?: number[];
+      checked?: number[];
+      required?: number[];
+      readonly?: number[];
+      expanded?: number[];
+      selected?: number[];
+    };
   };
 }
 
 /**
  * Serialized node (flattened, defaults omitted)
+ *
+ * @version 3.0.0 - T030: Normalized field names
+ * Field name mappings:
+ * - aria-label → aria_label (snake_case for token efficiency)
+ * - children → kids (shorter alias)
+ * - placeholder → hint (shorter alias)
+ * - inputType → input_type (snake_case)
+ * - boundingBox → bbox (compact array [x, y, w, h])
  */
 export interface SerializedNode {
-  node_id: string;
+  /** Sequential node ID (1, 2, 3...) mapped from backendNodeId */
+  node_id: number;
+
+  /** HTML tag name */
   tag: string;
+
+  /** ARIA role */
   role?: string;
-  "aria-label"?: string;
+
+  /** ARIA label (normalized from aria-label) */
+  aria_label?: string;
+
+  /** Visible text content */
   text?: string;
+
+  /** Current value for form inputs */
   value?: string;
-  children?: SerializedNode[];
+
+  /** Child nodes (normalized from children) */
+  kids?: SerializedNode[];
+
+  /** Link href */
   href?: string;
-  inputType?: string;
-  placeholder?: string;
+
+  /** Input type (normalized from inputType) */
+  input_type?: string;
+
+  /** Placeholder text (normalized from placeholder) */
+  hint?: string;
+
+  /** Bounding box as compact array [x, y, width, height] */
+  bbox?: number[];
+
+  /** Element states (disabled, checked, etc.) - may be moved to collection-level */
   states?: Record<string, boolean | string>;
 }
+
 
 // ============================================================================
 // Configuration
@@ -238,8 +211,32 @@ export interface SerializationOptions {
   /** Include form input values */
   includeValues?: boolean; // default: false
 
-  /** Include full metadata (bbox, viewport) */
-  includeMetadata?: boolean; // default: false
+  /** Fine-grained metadata control */
+  metadata?: {
+    /** Include aria-label/accessibility name */
+    includeAriaLabel?: boolean; // default: false
+
+    /** Include text content */
+    includeText?: boolean; // default: false
+
+    /** Include form input values (overrides top-level includeValues) */
+    includeValue?: boolean; // default: false
+
+    /** Include input type attribute */
+    includeInputType?: boolean; // default: false
+
+    /** Include placeholder/hint text */
+    includeHint?: boolean; // default: false
+
+    /** Include bounding box coordinates */
+    includeBbox?: boolean; // default: false
+
+    /** Include element states (disabled, checked, etc.) */
+    includeStates?: boolean; // default: false
+
+    /** Include href for links */
+    includeHref?: boolean; // default: false
+  };
 
   /** Include invisible elements */
   includeHiddenElements?: boolean; // default: false
@@ -358,89 +355,15 @@ export interface ActionResult {
   };
 
   /** Node ID that was acted upon */
-  nodeId: string;
+  nodeId: number;
 
   /** Action type */
-  actionType: "click" | "type" | "keypress";
+  actionType: "click" | "type" | "keypress" | "scroll";
 
   /** ISO 8601 timestamp */
   timestamp: string;
 }
 
-// ============================================================================
-// DomTool Interface
-// ============================================================================
-
-/**
- * Main entry point for DOM operations
- *
- * Responsibilities:
- * - Create and manage DOM snapshots
- * - Execute actions on DOM elements
- * - Track DOM changes and trigger snapshot rebuilds
- *
- * Lifecycle:
- * - Singleton per page (instantiated in content script)
- * - Destroyed when page unloads
- */
-export interface DomTool {
-  /**
-   * Current DOM snapshot (null if not yet built)
-   */
-  readonly domSnapshot: DomSnapshot | null;
-
-  /**
-   * Configuration
-   */
-  readonly config: DomToolConfig;
-
-  /**
-   * Build or rebuild DOM snapshot
-   */
-  buildSnapshot(
-    trigger?: "action" | "navigation" | "manual" | "mutation"
-  ): Promise<DomSnapshot>;
-
-  /**
-   * Get current snapshot or build if not exists
-   */
-  getSnapshot(): Promise<DomSnapshot>;
-
-  /**
-   * Get serialized DOM for LLM consumption
-   */
-  get_serialized_dom(options?: SerializationOptions): Promise<SerializedDom>;
-
-  /**
-   * Click on an element
-   */
-  click(nodeId: string, options?: ClickOptions): Promise<ActionResult>;
-
-  /**
-   * Type text into an element
-   */
-  type(
-    nodeId: string,
-    text: string,
-    options?: TypeOptions
-  ): Promise<ActionResult>;
-
-  /**
-   * Simulate keyboard key press
-   */
-  keypress(key: string, options?: KeyPressOptions): Promise<ActionResult>;
-
-  /**
-   * Invalidate current snapshot (force refresh)
-   * @deprecated Use buildSnapshot() instead
-   */
-  invalidateSnapshot(): void;
-
-  /**
-   * Clean up resources (observers, references)
-   */
-  destroy(): void;
-}
 
 // ============================================================================
 // Default Configuration
@@ -465,8 +388,17 @@ export const DEFAULT_CONFIG: Required<DomToolConfig> = {
  * Default serialization options
  */
 export const DEFAULT_SERIALIZATION_OPTIONS: Required<SerializationOptions> = {
-  includeValues: false,
-  includeMetadata: false,
+  includeValues: true,
+  metadata: {
+    includeAriaLabel: true,
+    includeText: true,
+    includeValue: true,
+    includeInputType: true,
+    includeHint: true,
+    includeBbox: false,
+    includeStates: true,
+    includeHref: true,
+  },
   includeHiddenElements: false,
   maxTextLength: 500,
   maxLabelLength: 250,

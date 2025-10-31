@@ -13,7 +13,8 @@
     "webNavigation",
     "sidePanel",
     "contextMenus",
-    "alarms"
+    "alarms",
+    "debugger"
   ],
   "host_permissions": ["<all_urls>"],
   "web_accessible_resources": [{
@@ -38,7 +39,7 @@
   "content_scripts": [{
     "matches": ["<all_urls>"],
     "js": ["content.js"],
-    "all_frames": true,
+    "all_frames": false,
     "run_at": "document_idle"
   }],
   "icons": {

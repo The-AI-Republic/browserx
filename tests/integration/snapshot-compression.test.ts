@@ -28,13 +28,8 @@ describe('Snapshot Compression Integration', () => {
     return {
       type: 'function_call_output',
       call_id: callId,
+      // The output is stringified { data: SerializedDom, metadata } (from executeBrowserTool)
       output: JSON.stringify({
-        success: true,
-        metadata: {
-          toolName: 'browser_dom',
-          duration: 50,
-          tabId: 1,
-        },
         data: {
           page: {
             context: {
@@ -53,6 +48,12 @@ describe('Snapshot Compression Integration', () => {
               ],
             },
           },
+        },
+        metadata: {
+          toolName: 'browser_dom',
+          action: 'snapshot',
+          duration: 50,
+          tabId: 1,
         },
       }),
     };
@@ -193,13 +194,8 @@ describe('Snapshot Compression Integration', () => {
       const largeSnapshot1: ResponseItem = {
         type: 'function_call_output',
         call_id: 'call_large_1',
+        // The output is stringified { data: SerializedDom, metadata } (from executeBrowserTool)
         output: JSON.stringify({
-          success: true,
-          metadata: {
-            toolName: 'browser_dom',
-            duration: 150,
-            tabId: 1,
-          },
           data: {
             page: {
               context: {
@@ -223,6 +219,12 @@ describe('Snapshot Compression Integration', () => {
                 })),
               },
             },
+          },
+          metadata: {
+            toolName: 'browser_dom',
+            action: 'snapshot',
+            duration: 150,
+            tabId: 1,
           },
         }),
       };

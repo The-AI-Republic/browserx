@@ -65,20 +65,18 @@ export function isDOMSnapshotOutput(item: ResponseItem): boolean {
   }
 
   try {
-    // Parse the output JSON
+    // Parse the output JSON from executeBrowserTool: { data: SerializedDom, metadata: { toolName, action? } }
     const parsed = JSON.parse(item.output);
 
-    // Check for DOM snapshot structure:
-    // - metadata.toolName === 'browser_dom'
-    // - success === true
-    // - data.page.context exists (URL, title)
-    // - data.page.body exists (the DOM tree)
-    return (
-      parsed.metadata?.toolName === 'browser_dom' &&
-      parsed.success === true &&
-      parsed.data?.page?.context !== undefined &&
-      parsed.data?.page?.body !== undefined
-    );
+    // Check for DOM snapshot using two methods:
+    // 1. Primary: Check metadata.action === 'snapshot' (most reliable when available)
+    // 2. Fallback: Check for page.body structure (for cases where action is missing)
+    const isBrowserDomTool = parsed.metadata?.toolName === 'browser_dom';
+    const hasSnapshotAction = parsed.metadata?.action === 'snapshot';
+    const hasPageStructure = parsed.data?.page?.context !== undefined &&
+                             parsed.data?.page?.body !== undefined;
+
+    return isBrowserDomTool && (hasSnapshotAction || hasPageStructure);
   } catch {
     // JSON parse failed, not a valid snapshot
     return false;
@@ -110,8 +108,10 @@ export function isCompressedSnapshot(item: ResponseItem): boolean {
   try {
     const parsed = JSON.parse(item.output);
 
-    // Check if this is a snapshot structure
-    if (!parsed.data?.page?.body) {
+    // Check for compressed snapshot structure: { data: { page: { body: string } }, metadata }
+    const body = parsed.data?.page?.body;
+
+    if (!body) {
       return false;
     }
 
@@ -119,7 +119,7 @@ export function isCompressedSnapshot(item: ResponseItem): boolean {
     // Original snapshots have body as object (SerializedNode)
     // Also check string size - compressed placeholders are much smaller (<500 chars)
     // while serialized snapshots are typically large (>10000 chars)
-    return typeof parsed.data.page.body === 'string' && parsed.data.page.body.length < 500;
+    return typeof body === 'string' && body.length < 500;
   } catch {
     return false;
   }
@@ -168,10 +168,10 @@ export function compressSnapshot(item: ResponseItem): ResponseItem {
   }
 
   try {
-    // Parse the output
+    // Parse the output: { data: SerializedDom, metadata }
     const parsed = JSON.parse(item.output);
 
-    // Create compressed version by replacing body
+    // Create compressed version by replacing body in data.page
     const compressed = {
       ...parsed,
       data: {

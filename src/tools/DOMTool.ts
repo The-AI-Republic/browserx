@@ -159,9 +159,6 @@ export class DOMTool extends BaseTool {
 
     const tabId = targetTab.id!;
 
-    // Ensure content script is injected
-    await this.ensureContentScriptInjected(tabId);
-
     // Route by action type
     const startTime = Date.now();
     try {
@@ -270,42 +267,6 @@ export class DOMTool extends BaseTool {
           .map(([mod]) => mod.charAt(0).toUpperCase() + mod.slice(1))
       : undefined;
     return await domService.keypress(key, modifiers);
-  }
-
-  /**
-   * Ensure content script is injected into the tab
-   *
-   * Note: Content script is only needed for visual effects (ripple, undulate).
-   * DOM operations use CDP directly and don't require the content script.
-   */
-  private async ensureContentScriptInjected(tabId: number): Promise<void> {
-    try {
-      // Inject content script for visual effects
-      // If already injected, Chrome will throw an error which we can safely ignore
-      await chrome.scripting.executeScript({
-        target: { tabId },
-        files: ['/content.js'],
-      });
-      this.log('info', `Content script injected into tab ${tabId}`);
-
-      // Give content script time to initialize visual effects
-      await new Promise(resolve => setTimeout(resolve, 100));
-    } catch (injectionError: any) {
-      // Ignore "Cannot access contents of the page" (CSP restriction) - visual effects won't work but CDP will
-      // Ignore "This frame has an unique origin" - same as above
-      // Ignore "Duplicate script" - already injected, which is fine
-      if (
-        injectionError.message?.includes('Cannot access contents') ||
-        injectionError.message?.includes('unique origin') ||
-        injectionError.message?.includes('Duplicate')
-      ) {
-        this.log('debug', `Content script injection skipped for tab ${tabId}: ${injectionError.message}`);
-        return;
-      }
-
-      // Rethrow other errors
-      throw new Error(`Failed to inject content script: ${injectionError.message}`);
-    }
   }
 
   // ============================================================================

@@ -326,14 +326,6 @@ function setupChromeListeners(): void {
     chrome.sidePanel.setPanelBehavior({ openPanelOnActionClick: true });
   }
   
-  // Handle tab updates
-  chrome.tabs.onUpdated.addListener((tabId, changeInfo, tab) => {
-    if (changeInfo.status === 'complete') {
-      // Inject content script if needed
-      injectContentScriptIfNeeded(tabId, tab);
-    }
-  });
-  
   // Handle commands (keyboard shortcuts)
   chrome.commands.onCommand.addListener((command) => {
     handleCommand(command);
@@ -458,39 +450,6 @@ async function handleContextMenuClick(
     
     // Open side panel to show results
     chrome.sidePanel.open({ tabId: tab.id });
-  }
-}
-
-/**
- * Inject content script if needed
- */
-async function injectContentScriptIfNeeded(
-  tabId: number,
-  tab: chrome.tabs.Tab
-): Promise<void> {
-  // Skip chrome:// and other protected URLs
-  if (!tab.url || tab.url.startsWith('chrome://') || tab.url.startsWith('chrome-extension://')) {
-    return;
-  }
-  
-  try {
-    // Check if content script is already injected
-    const response = await chrome.tabs.sendMessage(tabId, { type: 'PING' });
-    if (response) {
-      return; // Already injected
-    }
-  } catch {
-    // Not injected, proceed with injection
-  }
-  
-  // Inject content script
-  try {
-    await chrome.scripting.executeScript({
-      target: { tabId },
-      files: ['content.js'],
-    });
-  } catch (error) {
-    console.error('Failed to inject content script:', error);
   }
 }
 

@@ -2,11 +2,11 @@
   /**
    * Overlay Component
    *
-   * Dotted pattern overlay that blocks user input during agent operations.
+   * Dotted pattern overlay that provides visual feedback during agent operations.
    * Independent from ripple effects - visibility controlled separately.
    *
    * Features:
-   * - Full viewport coverage with pointer-events blocking
+   * - Full viewport coverage WITHOUT blocking interactions (pointer-events: none)
    * - Evenly distributed gray dots (half white half black) pattern
    * - Removed when user takes over control
    *
@@ -47,8 +47,8 @@
     background-position: 0 0, 8px 8px;
     background-color: transparent;
 
-    /* Input blocking */
-    pointer-events: all;
+    /* Visual only - no input blocking */
+    pointer-events: none;
 
     /* Performance */
     will-change: opacity;

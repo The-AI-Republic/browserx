@@ -58,7 +58,7 @@ describe('Action Reliability: Click', () => {
   });
 
   it('should follow closed-loop pattern: click → invalidate snapshot', async () => {
-    mockChrome.debugger.sendCommand.mockImplementation(async (target: any, method: string) => {
+    mockChrome.debugger.sendCommand.mockImplementation(async (target: any, method: string, params: any) => {
       if (method === 'DOM.enable') return {};
       if (method === 'Accessibility.enable') return {};
 
@@ -104,6 +104,15 @@ describe('Action Reliability: Click', () => {
 
       if (method === 'DOM.scrollIntoViewIfNeeded') return {};
       if (method === 'Input.dispatchMouseEvent') return {};
+
+      // Mock viewport dimensions check
+      if (method === 'Runtime.evaluate' && params?.expression?.includes('window.innerWidth')) {
+        return {
+          result: {
+            value: { width: 1920, height: 1080, scrollX: 0, scrollY: 0 }
+          }
+        };
+      }
 
       return {};
     });
@@ -184,6 +193,15 @@ describe('Action Reliability: Click', () => {
 
       if (method === 'Input.dispatchMouseEvent') return {};
 
+      // Mock viewport dimensions check
+      if (method === 'Runtime.evaluate' && params?.expression?.includes('window.innerWidth')) {
+        return {
+          result: {
+            value: { width: 1920, height: 1080, scrollX: 0, scrollY: 0 }
+          }
+        };
+      }
+
       return {};
     });
 
@@ -238,11 +256,22 @@ describe('Action Reliability: Click', () => {
       }
 
       if (method === 'DOM.getBoxModel') {
-        return {
-          model: {
-            content: [100, 2000, 200, 2000, 200, 2050, 100, 2050] // Below viewport
-          }
-        };
+        // Return coordinates that are off-screen on first call, then on-screen after scroll
+        if (scrollCalled) {
+          // After scroll - element is now visible
+          return {
+            model: {
+              content: [100, 500, 200, 500, 200, 550, 100, 550]
+            }
+          };
+        } else {
+          // Before scroll - element is below viewport
+          return {
+            model: {
+              content: [100, 2000, 200, 2000, 200, 2050, 100, 2050]
+            }
+          };
+        }
       }
 
       if (method === 'DOM.scrollIntoViewIfNeeded') {
@@ -255,6 +284,15 @@ describe('Action Reliability: Click', () => {
         // Should only be called after scroll
         expect(scrollCalled).toBe(true);
         return {};
+      }
+
+      // Mock viewport dimensions check - element at y=2000 is below viewport (height=1080)
+      if (method === 'Runtime.evaluate' && params?.expression?.includes('window.innerWidth')) {
+        return {
+          result: {
+            value: { width: 1920, height: 1080, scrollX: 0, scrollY: 0 }
+          }
+        };
       }
 
       return {};
@@ -329,6 +367,15 @@ describe('Action Reliability: Click', () => {
         return {};
       }
 
+      // Mock viewport dimensions check
+      if (method === 'Runtime.evaluate' && params?.expression?.includes('window.innerWidth')) {
+        return {
+          result: {
+            value: { width: 1920, height: 1080, scrollX: 0, scrollY: 0 }
+          }
+        };
+      }
+
       return {};
     });
 
@@ -341,8 +388,8 @@ describe('Action Reliability: Click', () => {
     await domService.click(backendNodeId);
   });
 
-  it('should send ripple visual effect', async () => {
-    mockChrome.debugger.sendCommand.mockImplementation(async (target: any, method: string) => {
+  it('should trigger CDP Runtime.evaluate visual effect', async () => {
+    mockChrome.debugger.sendCommand.mockImplementation(async (target: any, method: string, params: any) => {
       if (method === 'DOM.enable') return {};
       if (method === 'Accessibility.enable') return {};
 
@@ -389,6 +436,18 @@ describe('Action Reliability: Click', () => {
       if (method === 'DOM.scrollIntoViewIfNeeded') return {};
       if (method === 'Input.dispatchMouseEvent') return {};
 
+      // Mock viewport dimensions check
+      if (method === 'Runtime.evaluate' && params?.expression?.includes('window.innerWidth')) {
+        return {
+          result: {
+            value: { width: 1920, height: 1080, scrollX: 0, scrollY: 0 }
+          }
+        };
+      }
+
+      // Mock visual effect Runtime.evaluate calls
+      if (method === 'Runtime.evaluate') return { result: { value: { success: true } } };
+
       return {};
     });
 
@@ -400,18 +459,22 @@ describe('Action Reliability: Click', () => {
 
     const result = await domService.click(backendNodeId);
 
-    // Verify visual effect sent
-    expect(mockChrome.tabs.sendMessage).toHaveBeenCalledWith(
-      mockTabId,
-      expect.objectContaining({
-        type: 'SHOW_VISUAL_EFFECT',
-        effect: {
-          type: 'ripple',
-          x: 150, // Center X
-          y: 225  // Center Y
-        }
-      })
+    // CDP MIGRATION: Verify Runtime.evaluate triggers visual effect (CSP-safe, synchronous)
+    const runtimeCalls = (mockChrome.debugger.sendCommand as any).mock.calls.filter(
+      (call: any[]) => call[1] === 'Runtime.evaluate'
     );
+
+    expect(runtimeCalls.length).toBeGreaterThan(0);
+
+    // Verify the expression dispatches the custom event for ripple effect
+    const runtimeCall = runtimeCalls.find((call: any[]) =>
+      call[2].expression.includes('browserx:show-visual-effect') &&
+      call[2].expression.includes('"ripple"')
+    );
+
+    expect(runtimeCall).toBeDefined();
+    expect(runtimeCall[2].expression).toContain('x: 150'); // Center X
+    expect(runtimeCall[2].expression).toContain('y: 225'); // Center Y
 
     expect(result.success).toBe(true);
     expect(result.actionType).toBe('click');
@@ -514,7 +577,7 @@ describe('Action Reliability: Click', () => {
   });
 
   it('should NOT send visual effect when disabled in config', async () => {
-    mockChrome.debugger.sendCommand.mockImplementation(async (target: any, method: string) => {
+    mockChrome.debugger.sendCommand.mockImplementation(async (target: any, method: string, params: any) => {
       if (method === 'DOM.enable') return {};
       if (method === 'Accessibility.enable') return {};
 
@@ -560,6 +623,15 @@ describe('Action Reliability: Click', () => {
       if (method === 'DOM.scrollIntoViewIfNeeded') return {};
       if (method === 'Input.dispatchMouseEvent') return {};
 
+      // Mock viewport dimensions check
+      if (method === 'Runtime.evaluate' && params?.expression?.includes('window.innerWidth')) {
+        return {
+          result: {
+            value: { width: 1920, height: 1080, scrollX: 0, scrollY: 0 }
+          }
+        };
+      }
+
       return {};
     });
 
@@ -574,8 +646,11 @@ describe('Action Reliability: Click', () => {
 
     expect(result.success).toBe(true);
 
-    // Visual effect should NOT be sent
-    expect(mockChrome.tabs.sendMessage).not.toHaveBeenCalled();
+    // CDP MIGRATION: Runtime.evaluate should NOT be called for visual effects when disabled
+    const runtimeCalls = (mockChrome.debugger.sendCommand as any).mock.calls.filter(
+      (call: any[]) => call[1] === 'Runtime.evaluate'
+    );
+    expect(runtimeCalls.length).toBe(0);
   });
 });
 

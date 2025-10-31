@@ -1,9 +1,15 @@
 /**
  * Lightweight content script used by Browserx.
- * Provides visual effects for DOM operations performed via CDP.
+ *
+ * CDP MIGRATION:
+ * - DOM tool: Migrated to CDP (003-cdp-dom-refactor)
+ * - Visual effects: Triggered via CDP Runtime.evaluate (CSP-safe, synchronous)
+ *
+ * This content script mounts the visual effect controller.
+ * Visual effects are triggered by CDP injecting JavaScript that dispatches custom events.
  */
 
-// VISUAL EFFECTS v3.0
+// VISUAL EFFECTS v4.0 - CDP-triggered
 import VisualEffectController from './ui_effect/VisualEffectController.svelte';
 
 // Unique instance ID for debugging
@@ -52,16 +58,29 @@ function initialize(): void {
 
 	console.log(`[Browserx] Instance ${INSTANCE_ID} - Content script initialized (main frame only)`);
 
-	// Setup direct message listener for visual effects from DomService
-	setupDirectMessageListener();
+	// Setup lazy initialization for visual effects
+	// Visual effects will only initialize when DomService first needs them
+	setupVisualEffectsListener();
+}
 
-	// Note: Visual effects are initialized lazily when first SHOW_VISUAL_EFFECT message is received
+/**
+ * Setup lazy initialization listener for visual effects
+ * Visual effects only initialize when DomService first needs them (saves memory/CPU on non-working tabs)
+ */
+function setupVisualEffectsListener(): void {
+	document.addEventListener('browserx:init-visual-effects', () => {
+		if (!visualEffectController) {
+			console.log(`[Browserx] Instance ${INSTANCE_ID} - Lazy initializing visual effects...`);
+			initializeVisualEffects();
+			(window as any).__browserx_visual_effects_initialized__ = true;
+		}
+	}, { once: true }); // Only listen once
 }
 
 /**
  * Initialize Visual Effect Controller
  * Mounts Svelte component in Shadow DOM for style isolation
- * Only runs once in main frame (not in iframes)
+ * Visual effects are triggered by CDP via Runtime.evaluate (not chrome.runtime.onMessage)
  */
 function initializeVisualEffects(): void {
 	try {
@@ -119,43 +138,6 @@ function initializeVisualEffects(): void {
 		// Graceful degradation - visual effects failure never blocks content script
 		console.error(`[Browserx] Instance ${INSTANCE_ID} - Failed to initialize visual effects:`, error);
 	}
-}
-
-/**
- * Setup direct chrome.runtime.onMessage listener
- * Handles SHOW_VISUAL_EFFECT messages from DomService
- */
-function setupDirectMessageListener(): void {
-	chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
-		// Handle SHOW_VISUAL_EFFECT from DomService
-		if (message.type === 'SHOW_VISUAL_EFFECT') {
-			try {
-				// Lazy initialize visual effects if not already initialized
-				if (!visualEffectController) {
-					initializeVisualEffects();
-				}
-
-				// Extract effect type and coordinates (coordinates may be undefined for undulate)
-				const { type, x, y } = message.effect;
-
-				// Dispatch custom event to VisualEffectController
-				// For ripple/cursor/highlight: x, y are screen coordinates
-				// For undulate: x, y are undefined (full-page effect)
-				const customEvent = new CustomEvent('browserx:show-visual-effect', {
-					detail: { type, x, y },
-					bubbles: false,
-					cancelable: false
-				});
-				document.dispatchEvent(customEvent);
-
-				sendResponse({ success: true });
-			} catch (error) {
-				console.error('[Browserx] Error handling visual effect:', error);
-				sendResponse({ success: false, error: error.message });
-			}
-			return true; // Keep channel open for async response
-		}
-	});
 }
 
 function getPageContext(): PageContext {

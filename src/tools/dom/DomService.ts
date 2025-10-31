@@ -125,8 +125,8 @@ export class DomService {
       }
     }
 
-    // Trigger undulate visual effect to indicate DOM observation/analysis
-    this.sendVisualEffect('undulate');
+    // CDP MIGRATION: Trigger undulate visual effect (via Runtime.evaluate, not message passing)
+    await this.triggerVisualEffect('undulate');
 
     return this.currentSnapshot!.serialize();
   }
@@ -478,18 +478,111 @@ export class DomService {
     }
   }
 
-  private sendVisualEffect(type: 'ripple' | 'cursor' | 'highlight' | 'undulate', x?: number, y?: number): void {
+  /**
+   * Ensure visual effects are initialized (lazy initialization)
+   *
+   * LAZY INITIALIZATION: Visual effects only mount when first needed, saving memory/CPU on non-working tabs.
+   * This method checks if visual effects are initialized, and if not, dispatches an init event.
+   * The content script listens for this event and mounts the VisualEffectController.
+   *
+   * Subsequent calls are cached (only checks once per DomService instance).
+   */
+  private visualEffectsInitialized: boolean = false;
+
+  private async ensureVisualEffectsInitialized(): Promise<void> {
+    // Already checked and initialized in this DomService instance
+    if (this.visualEffectsInitialized) return;
+
+    try {
+      // Check if visual effects are initialized in the page
+      const checkResult = await this.sendCommand<any>('Runtime.evaluate', {
+        expression: '!!window.__browserx_visual_effects_initialized__',
+        returnByValue: true
+      });
+
+      const isInitialized = checkResult?.result?.value === true;
+
+      if (!isInitialized) {
+        console.log(`[DomService] Initializing visual effects on tab ${this.tabId}...`);
+
+        // Dispatch init event to trigger lazy initialization
+        await this.sendCommand('Runtime.evaluate', {
+          expression: `
+            (function() {
+              const event = new CustomEvent('browserx:init-visual-effects', {
+                bubbles: false,
+                cancelable: false
+              });
+              document.dispatchEvent(event);
+            })()
+          `,
+          returnByValue: false,
+          awaitPromise: false
+        });
+
+        // Wait briefly for initialization to complete (~100ms for Svelte mount + WebGL setup)
+        await new Promise(resolve => setTimeout(resolve, 150));
+      }
+
+      // Cache result to avoid repeated checks
+      this.visualEffectsInitialized = true;
+    } catch (error: any) {
+      // Graceful degradation - visual effects unavailable but actions continue
+      console.debug(`[DomService] Could not initialize visual effects on tab ${this.tabId}: ${error.message || 'Unknown error'}`);
+      this.visualEffectsInitialized = true; // Don't retry on every action
+    }
+  }
+
+  /**
+   * Trigger visual effect via CDP Runtime.evaluate
+   *
+   * CDP MIGRATION: Instead of chrome.tabs.sendMessage (async, CSP-blocked),
+   * we inject JavaScript directly via CDP Runtime.evaluate:
+   * - Synchronous execution (awaitable)
+   * - CSP-safe (CDP bypasses Content Security Policy)
+   * - Preserves existing sophisticated visual effects (WebGL ripples, animated cursor, etc.)
+   * - No message passing latency
+   *
+   * LAZY INITIALIZATION: Visual effects are initialized on first use (ensureVisualEffectsInitialized).
+   * The injected code dispatches a CustomEvent that VisualEffectController listens for.
+   */
+  private async triggerVisualEffect(type: 'ripple' | 'undulate', x?: number, y?: number): Promise<void> {
     if (!this.config.enableVisualEffects) return;
 
-    chrome.tabs.sendMessage(this.tabId, {
-      type: 'SHOW_VISUAL_EFFECT',
-      effect: { type, x, y }
-    }).catch((error) => {
-      // Content script not available (CSP-restricted page or not injected) - graceful degradation
-      // CSP Detection: If sendMessage fails consistently, page likely has Content-Security-Policy
-      // that blocks script injection. Visual effects will be disabled but CDP actions continue to work.
-      console.debug(`[DomService] Visual effect unavailable on tab ${this.tabId}: ${error.message || 'Content script not loaded'}. This is expected on CSP-restricted pages.`);
-    });
+    try {
+      // Ensure visual effects are initialized (lazy init on first use)
+      await this.ensureVisualEffectsInitialized();
+
+      // Inject JavaScript to dispatch custom event
+      const expression = `
+        (function() {
+          try {
+            const event = new CustomEvent('browserx:show-visual-effect', {
+              detail: { type: ${JSON.stringify(type)}, x: ${x ?? 'undefined'}, y: ${y ?? 'undefined'} },
+              bubbles: false,
+              cancelable: false
+            });
+            document.dispatchEvent(event);
+            return { success: true };
+          } catch (error) {
+            return { success: false, error: error.message };
+          }
+        })()
+      `;
+
+      await this.sendCommand('Runtime.evaluate', {
+        expression,
+        returnByValue: true,
+        awaitPromise: false
+      });
+    } catch (error: any) {
+      // Graceful degradation - visual effects unavailable but actions continue
+      // This can happen on:
+      // - Pages not yet loaded (content script not initialized)
+      // - Pages with strict CSP that blocks content script entirely
+      // - Browser contexts where content script isn't injected
+      console.debug(`[DomService] Visual effect unavailable on tab ${this.tabId}: ${error.message || 'Unknown error'}. Actions will continue without visual feedback.`);
+    }
   }
 
   // Action methods (T037-T045 will implement these)
@@ -530,7 +623,7 @@ export class DomService {
         throw error;
       }
 
-      const { content } = boxModel.model;
+      let { content } = boxModel.model;
 
       // T080: Element visibility verification
       const width = Math.abs(content[2] - content[0]);
@@ -539,16 +632,55 @@ export class DomService {
         throw new Error('ELEMENT_NOT_VISIBLE: Element has zero width or height. It may be hidden or display:none.');
       }
 
-      const centerX = (content[0] + content[2]) / 2;
-      const centerY = (content[1] + content[5]) / 2;
+      // Calculate initial center coordinates
+      let centerX = (content[0] + content[2]) / 2;
+      let centerY = (content[1] + content[5]) / 2;
 
-      // Send visual effect
-      this.sendVisualEffect('ripple', centerX, centerY);
+      // Check if element is within viewport and scroll if needed
+      // Only check viewport if visual effects are enabled (optimization)
+      if (this.config.enableVisualEffects) {
+        const viewportResult = await this.sendCommand<any>('Runtime.evaluate', {
+          expression: '({ width: window.innerWidth, height: window.innerHeight, scrollX: window.scrollX, scrollY: window.scrollY })',
+          returnByValue: true
+        });
+        const viewport = viewportResult.result.value;
 
-      // Scroll into view
-      await this.sendCommand('DOM.scrollIntoViewIfNeeded', { backendNodeId }).catch(() => {});
+        // Element is in viewport if its center is visible on screen
+        // Note: content coordinates are absolute (relative to document), not viewport
+        const isInViewport =
+          centerX >= viewport.scrollX &&
+          centerX <= viewport.scrollX + viewport.width &&
+          centerY >= viewport.scrollY &&
+          centerY <= viewport.scrollY + viewport.height;
 
-      // Dispatch click
+        if (!isInViewport) {
+          console.log(`[DomService] Element at (${centerX}, ${centerY}) is off-screen (viewport: ${viewport.scrollX}-${viewport.scrollX + viewport.width}, ${viewport.scrollY}-${viewport.scrollY + viewport.height}). Scrolling into view...`);
+
+          // Scroll element into view
+          await this.sendCommand('DOM.scrollIntoViewIfNeeded', { backendNodeId });
+
+          // Wait for scroll animation to complete
+          await new Promise(resolve => setTimeout(resolve, 100));
+
+          // Get box model AGAIN after scrolling (element position has changed)
+          const updatedBoxModel = await this.sendCommand<any>('DOM.getBoxModel', { backendNodeId });
+          content = updatedBoxModel.model.content;
+
+          // Recalculate center coordinates with new position
+          centerX = (content[0] + content[2]) / 2;
+          centerY = (content[1] + content[5]) / 2;
+
+          console.log(`[DomService] After scroll, element is now at (${centerX}, ${centerY})`);
+        }
+      } else {
+        // Visual effects disabled - still scroll into view if needed, but don't wait
+        await this.sendCommand('DOM.scrollIntoViewIfNeeded', { backendNodeId }).catch(() => {});
+      }
+
+      // CDP MIGRATION: Trigger ripple visual effect BEFORE click (with correct coordinates)
+      await this.triggerVisualEffect('ripple', centerX, centerY);
+
+      // Dispatch click at the correct position
       await this.sendCommand('Input.dispatchMouseEvent', {
         type: 'mousePressed',
         x: centerX,

@@ -1,0 +1,189 @@
+openapi: 3.1.0
+info:
+  title: DOM Tool Form Fill Action
+  version: 1.0.0
+  description: >
+    Contract for the `fill_form` action exposed by the DOM Tool. The action enables
+    automation clients to populate multiple form inputs within a single request and
+    returns granular outcomes per field.
+paths:
+  /dom-tool/actions/fill-form:
+    post:
+      summary: Execute a batched form fill operation
+      description: >
+        Applies the supplied field instructions within the currently attached tab.
+        The request must include at least one field and provides optional fallbacks
+        (selector, name) when snapshot node IDs are not available.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/FormFillRequest'
+      responses:
+        '200':
+          description: Form fill completed; review per-field outcomes for attention items
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/FormFillResponse'
+        '400':
+          description: Validation failed (missing locators, disallowed field types, etc.)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '409':
+          description: Snapshot mismatch or action window violation
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+components:
+  schemas:
+    FormFillRequest:
+      type: object
+      required:
+        - action
+        - fields
+      properties:
+        action:
+          type: string
+          enum: ['fill_form']
+        tab_id:
+          type: integer
+          description: Optional target tab identifier when not using the active tab
+        form_selector:
+          type: string
+          description: CSS selector scoping field resolution to a specific form
+        fields:
+          type: array
+          minItems: 1
+          items:
+            $ref: '#/components/schemas/FieldInstruction'
+        submit:
+          $ref: '#/components/schemas/SubmitBehavior'
+        metadata:
+          type: object
+          additionalProperties: true
+          description: Free-form context carried through to logging/analytics
+    FieldInstruction:
+      type: object
+      required:
+        - value
+      properties:
+        node_id:
+          type: integer
+          description: Node identifier provided by the most recent DOM snapshot
+        selector:
+          type: string
+          description: CSS selector fallback when node_id unavailable
+        name:
+          type: string
+          description: Matches the input's name attribute
+        label:
+          type: string
+          description: Human-readable label used for reporting
+        type:
+          type: string
+          description: Hint for input handling when DOM metadata is ambiguous
+          enum:
+            - text
+            - email
+            - password
+            - tel
+            - number
+            - date
+            - checkbox
+            - radio
+            - select
+            - textarea
+        value:
+          description: Desired field value; must be JSON-serializable
+        trigger:
+          type: string
+          enum: [input, change, blur]
+          description: DOM event to fire after value application (defaults to change)
+        commit:
+          type: string
+          enum: [none, enter]
+          description: Whether to append an Enter keystroke after filling
+    SubmitBehavior:
+      type: object
+      properties:
+        mode:
+          type: string
+          enum: [none, click, commit]
+          description: Whether to follow filling with no submit, a click on detected submit controls, or a synthetic submit event
+        delay_ms:
+          type: integer
+          minimum: 0
+          description: Optional wait time before triggering submission
+    FormFillResponse:
+      type: object
+      required:
+        - success
+        - status
+        - outcomes
+        - duration_ms
+      properties:
+        success:
+          type: boolean
+          description: True when no fields require attention
+        status:
+          type: string
+          enum: [ok, attention_required, failed]
+          description: Aggregate interpretation of per-field outcomes
+        filled_fields:
+          type: array
+          items:
+            type: string
+          description: Identifiers for fields successfully updated
+        outcomes:
+          type: array
+          items:
+            $ref: '#/components/schemas/FieldOutcome'
+        warnings:
+          type: array
+          items:
+            type: string
+        duration_ms:
+          type: integer
+          minimum: 0
+          description: Total execution time for the action
+    FieldOutcome:
+      type: object
+      required:
+        - target
+        - status
+      properties:
+        target:
+          type: string
+          description: Resolved identifier (node_id or selector form)
+        status:
+          type: string
+          enum: [filled, skipped, failed]
+        message:
+          type: string
+          description: Human-readable reason when status is not filled
+        applied_value:
+          description: Value written to the field (if any)
+    ErrorResponse:
+      type: object
+      required:
+        - error
+      properties:
+        error:
+          type: object
+          required:
+            - code
+            - message
+          properties:
+            code:
+              type: string
+              description: Stable error identifier (e.g., VALIDATION_ERROR, ACTION_FAILED)
+            message:
+              type: string
+            details:
+              type: object
+              additionalProperties: true

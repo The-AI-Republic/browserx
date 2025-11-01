@@ -32,6 +32,7 @@ import type { TokenUsage } from './types/TokenUsage';
 import { SSEEventParser } from './SSEEventParser';
 import { RequestQueue, RequestPriority, type QueuedRequest } from './RequestQueue';
 import { get_full_instructions, get_formatted_input } from './PromptHelpers';
+import { ScreenshotFileManager } from '../tools/screenshot/ScreenshotFileManager';
 
 /**
  * SSE Event structure from OpenAI Responses API
@@ -238,7 +239,7 @@ export class OpenAIResponsesClient extends ModelClient {
     const payload: ResponsesApiRequest = {
       model: this.currentModel,
       instructions: fullInstructions,
-      input: get_formatted_input(prompt),
+      input: await get_formatted_input(prompt),
       tools: toolsJson,
       tool_choice: 'auto',
       parallel_tool_calls: false,
@@ -390,7 +391,7 @@ export class OpenAIResponsesClient extends ModelClient {
     const payload: ResponsesApiRequest = {
       model: this.currentModel,
       instructions: fullInstructions,
-      input: get_formatted_input(prompt),
+      input: await get_formatted_input(prompt),
       tools: toolsJson,
       tool_choice: 'auto',
       parallel_tool_calls: false,
@@ -550,6 +551,13 @@ export class OpenAIResponsesClient extends ModelClient {
       }
     } finally {
       reader.releaseLock();
+
+      // Cleanup screenshot after stream completion
+      try {
+        await ScreenshotFileManager.deleteScreenshot();
+      } catch (error) {
+        console.debug('[OpenAIResponsesClient] Screenshot cleanup failed (may not exist):', error);
+      }
     }
   }
 
@@ -637,6 +645,13 @@ export class OpenAIResponsesClient extends ModelClient {
       }
     } finally {
       reader.releaseLock();
+
+      // Cleanup screenshot after stream completion
+      try {
+        await ScreenshotFileManager.deleteScreenshot();
+      } catch (error) {
+        console.debug('[OpenAIResponsesClient] Screenshot cleanup failed (may not exist):', error);
+      }
     }
   }
 

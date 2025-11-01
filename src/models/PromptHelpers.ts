@@ -7,6 +7,8 @@
  */
 
 import type { Prompt, ModelFamily, ResponseItem } from './types/ResponsesAPI';
+import type { ContentItem } from '../protocol/types';
+import { ScreenshotFileManager } from '../tools/screenshot/ScreenshotFileManager';
 
 /**
  * Get full instructions by combining base instructions with user instructions.
@@ -92,8 +94,51 @@ export function get_full_instructions(prompt: Prompt, model: ModelFamily): strin
  * console.log(formattedInput.length); // 2
  * ```
  */
-export function get_formatted_input(prompt: Prompt): ResponseItem[] {
+export async function get_formatted_input(prompt: Prompt): Promise<ResponseItem[]> {
   // Clone the input array to prevent mutations
-  // In Rust, this is `self.input.clone()`
-  return [...prompt.input];
+  const items = [...prompt.input];
+
+  // Process items to inject screenshots where needed
+  const processedItems = await Promise.all(
+    items.map(async (item) => {
+      // Only process function_call_output items
+      if (item.type !== 'function_call_output') {
+        return item;
+      }
+
+      // Check if this is a screenshot tool response
+      try {
+        const output = JSON.parse(item.output);
+
+        // Check if this is a screenshot action response with image_file_id
+        if (output?.data?.image_file_id === 'screenshot_cache' && output?.action === 'screenshot') {
+          // Retrieve screenshot from storage
+          const screenshotData = await ScreenshotFileManager.getScreenshot();
+
+          if (screenshotData) {
+            // Convert to data URL
+            const dataUrl = `data:image/png;base64,${screenshotData}`;
+
+            // Return modified item with image content
+            // We need to convert function_call_output to a message with image content
+            return {
+              type: 'message' as const,
+              role: 'user',
+              content: [
+                { type: 'input_text' as const, text: `Screenshot captured: ${output.data.width}x${output.data.height}` },
+                { type: 'input_image' as const, image_url: dataUrl }
+              ]
+            } as ResponseItem;
+          }
+        }
+      } catch (error) {
+        // Not JSON or not a screenshot response, return as-is
+        console.debug('[PromptHelpers] Item is not a screenshot response:', error);
+      }
+
+      return item;
+    })
+  );
+
+  return processedItems;
 }

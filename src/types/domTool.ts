@@ -364,6 +364,106 @@ export interface ActionResult {
   timestamp: string;
 }
 
+// ============================================================================
+// Fill Form Action Types
+// ============================================================================
+
+export type FillFormTrigger = "input" | "change" | "blur";
+
+export type FillFormCommitMode = "none" | "enter";
+
+export type FillFormFieldStatus = "filled" | "skipped" | "failed";
+
+export type FillFormAggregateStatus = "ok" | "attention_required" | "failed";
+
+export interface FillFormFieldInstruction {
+  /** Snapshot node identifier when available */
+  nodeId?: number;
+
+  /** CSS selector fallback scoped to the current document or form */
+  selector?: string;
+
+  /** Name attribute fallback */
+  name?: string;
+
+  /** Human-readable label for reporting */
+  label?: string;
+
+  /** Optional hint for field handling */
+  type?: "text" | "email" | "password" | "tel" | "number" | "date" | "checkbox" | "radio" | "select" | "textarea";
+
+  /** Value to apply to the target field */
+  value: unknown;
+
+  /** Primary DOM event to dispatch after applying the value (defaults to change) */
+  trigger?: FillFormTrigger;
+
+  /** Whether to append an Enter keystroke after filling */
+  commit?: FillFormCommitMode;
+}
+
+export interface FillFormSubmitBehavior {
+  /** Submission strategy after populating fields */
+  mode?: "none" | "click" | "commit";
+
+  /** Optional delay before triggering submit workflow */
+  delayMs?: number;
+}
+
+export interface FillFormRequest {
+  /** Discriminant for the DOM Tool action */
+  action: "fill_form";
+
+  /** Tab to target; defaults to the active tab when omitted */
+  tabId?: number;
+
+  /** Optional form selector to scope field lookups */
+  formSelector?: string;
+
+  /** Fields to populate during the action */
+  fields: FillFormFieldInstruction[];
+
+  /** Submission behavior after filling all fields */
+  submit?: FillFormSubmitBehavior;
+
+  /** Free-form metadata echoed back to the orchestrator */
+  metadata?: Record<string, unknown>;
+}
+
+export interface FillFormFieldOutcome {
+  /** Resolved identifier (nodeId when available, otherwise selector/name) */
+  target: string;
+
+  /** Result of attempting to populate the field */
+  status: FillFormFieldStatus;
+
+  /** Human-readable explanation for skipped or failed entries */
+  message?: string;
+
+  /** Value actually applied to the field (if any) */
+  appliedValue?: unknown;
+}
+
+export interface FillFormResult {
+  /** Indicates whether all fields completed without attention */
+  success: boolean;
+
+  /** Aggregate status derived from the field outcomes */
+  status: FillFormAggregateStatus;
+
+  /** Ordered list of identifiers that were successfully updated */
+  filledFields: string[];
+
+  /** Detailed outcomes for each attempted field */
+  outcomes: FillFormFieldOutcome[];
+
+  /** Additional warnings (e.g., snapshot staleness) */
+  warnings?: string[];
+
+  /** Total execution duration in milliseconds */
+  durationMs: number;
+}
+
 
 // ============================================================================
 // Default Configuration

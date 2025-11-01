@@ -4,7 +4,6 @@
 
 import { ToolRegistry } from './ToolRegistry';
 import { WebScrapingTool } from './WebScrapingTool';
-import { FormAutomationTool } from './FormAutomationTool';
 import { NetworkInterceptTool } from './NetworkInterceptTool';
 import { DataExtractionTool } from './DataExtractionTool';
 import { DOMTool } from './DOMTool';
@@ -18,7 +17,6 @@ export { ToolRegistry } from './ToolRegistry';
 export { BaseTool, createFunctionTool, createObjectSchema, createToolDefinition } from './BaseTool';
 export type { ToolDefinition, JsonSchema, ResponsesApiTool, FreeformTool, FreeformToolFormat } from './BaseTool';
 export { WebScrapingTool } from './WebScrapingTool';
-export { FormAutomationTool } from './FormAutomationTool';
 export { NetworkInterceptTool } from './NetworkInterceptTool';
 export { DataExtractionTool } from './DataExtractionTool';
 export { DOMTool } from './DOMTool';
@@ -44,8 +42,6 @@ export async function registerTools(registry: ToolRegistry, toolsConfig: IToolsC
       switch (toolName) {
         case 'web_scraping':
           return toolsConfig.web_scraping_tool === true;
-        case 'form_automation':
-          return toolsConfig.form_automation_tool === true;
         case 'network_intercept':
           return toolsConfig.network_intercept_tool === true;
         case 'data_extraction':
@@ -87,14 +83,6 @@ export async function registerTools(registry: ToolRegistry, toolsConfig: IToolsC
       console.log('WebScrapingTool disabled in configuration, skipping...');
     }
 
-    // Form Automation Tool
-    if (isToolEnabled('form_automation')) {
-      const formAutomationTool = new FormAutomationTool();
-      await registerTool('form_automation', formAutomationTool);
-    } else {
-      console.log('FormAutomationTool disabled in configuration, skipping...');
-    }
-
     // Network Intercept Tool
     if (isToolEnabled('network_intercept')) {
       const networkInterceptTool = new NetworkInterceptTool();
@@ -111,10 +99,15 @@ export async function registerTools(registry: ToolRegistry, toolsConfig: IToolsC
       console.log('DataExtractionTool disabled in configuration, skipping...');
     }
 
-    // DOM Tool
-    if (isToolEnabled('dom_tool')) {
+    const domToolRequested = isToolEnabled('dom_tool') || toolsConfig.form_automation_tool === true;
+
+    // DOM Tool (handles structured form fill via fill_form action)
+    if (domToolRequested) {
       const domTool = new DOMTool();
       await registerTool('dom_tool', domTool);
+      if (toolsConfig.form_automation_tool === true && !isToolEnabled('dom_tool')) {
+        console.log('Form automation configuration detected. Routing to DOMTool fill_form action.');
+      }
     } else {
       console.log('DOMTool disabled in configuration, skipping...');
     }

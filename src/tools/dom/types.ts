@@ -161,6 +161,7 @@ export interface PerformanceMetrics {
     type: number;
     scroll: number;
     keypress: number;
+    fill_form: number;
   };
   totalActionDuration: number;
   averageActionDuration: number;

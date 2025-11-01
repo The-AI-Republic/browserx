@@ -10,6 +10,40 @@ import type {
 } from './types';
 import { NODE_ID_WINDOW, NODE_ID_DOCUMENT } from './types';
 import { computeHeuristics, classifyNode, determineInteractionType, detectFramework } from './utils';
+import type {
+  FillFormFieldInstruction,
+  FillFormFieldOutcome,
+  FillFormResult,
+  FillFormAggregateStatus
+} from '../../types/domTool';
+import { resolveFieldIdentifier } from './FormFillHelpers';
+
+interface FillFormExecutionRequest {
+  fields: FillFormFieldInstruction[];
+  formSelector?: string;
+  submit?: {
+    mode?: 'none' | 'click' | 'commit';
+    delay_ms?: number;
+  };
+  metadata?: Record<string, unknown>;
+}
+
+interface NormalizedFillField {
+  identifier: string;
+  selector?: string;
+  name?: string;
+  label?: string;
+  type?: string;
+  trigger?: 'input' | 'change' | 'blur';
+  commit?: 'none' | 'enter';
+  value: unknown;
+}
+
+interface FillFormScriptResult {
+  filledFields: string[];
+  outcomes: FillFormFieldOutcome[];
+  warnings: string[];
+}
 
 export class DomService {
   private static instances = new Map<number, DomService>();
@@ -43,7 +77,8 @@ export class DomService {
         click: 0,
         type: 0,
         scroll: 0,
-        keypress: 0
+        keypress: 0,
+        fill_form: 0
       },
       totalActionDuration: 0,
       averageActionDuration: 0,
@@ -982,8 +1017,399 @@ export class DomService {
     }
   }
 
+  async fillForm(request: FillFormExecutionRequest): Promise<FillFormResult> {
+    const start = Date.now();
+    const preflightWarnings: string[] = [];
+
+    if (!this.currentSnapshot) {
+      await this.buildSnapshot();
+    }
+
+    const snapshot = this.currentSnapshot;
+    if (!snapshot) {
+      throw new Error('SNAPSHOT_UNAVAILABLE: No snapshot available for fill_form action');
+    }
+
+    const normalizedFields: NormalizedFillField[] = [];
+
+    for (const rawField of request.fields) {
+      const identifier = resolveFieldIdentifier(rawField);
+      const normalized: NormalizedFillField = {
+        identifier,
+        selector: rawField.selector,
+        name: rawField.name,
+        label: rawField.label,
+        type: rawField.type,
+        trigger: rawField.trigger,
+        commit: rawField.commit,
+        value: rawField.value,
+      };
+
+      const sequentialNodeId = typeof (rawField as any).node_id === 'number'
+        ? (rawField as any).node_id
+        : typeof (rawField as any).nodeId === 'number'
+        ? (rawField as any).nodeId
+        : undefined;
+
+      if (!normalized.selector && sequentialNodeId !== undefined) {
+        const backendNodeId = snapshot.translateSequentialIdToBackendId(sequentialNodeId);
+        if (backendNodeId === null) {
+          preflightWarnings.push(`Unable to resolve backend node for ${identifier}`);
+        } else {
+          let objectId: string | undefined;
+          try {
+            const resolved = await this.sendCommand<any>('DOM.resolveNode', { backendNodeId });
+            objectId = resolved.object?.objectId;
+
+            if (objectId) {
+              const introspection = await this.sendCommand<any>('Runtime.callFunctionOn', {
+                objectId,
+                functionDeclaration: `function() {
+                  const element = this;
+                  const nameAttr = element.getAttribute ? element.getAttribute('name') : null;
+                  const buildSelector = () => {
+                    if (element.id) return '#' + element.id;
+                    if (nameAttr) return '[name="' + nameAttr + '"]';
+                    const path = [];
+                    let current = element;
+                    while (current && current !== document.body) {
+                      let selector = current.tagName.toLowerCase();
+                      if (current.className) {
+                        selector += '.' + current.className.split(/\\s+/).filter(Boolean).join('.');
+                      }
+                      const parent = current.parentElement;
+                      if (parent) {
+                        const siblings = Array.from(parent.children).filter(child => child.tagName === current.tagName);
+                        if (siblings.length > 1) {
+                          selector += ':nth-of-type(' + (siblings.indexOf(current) + 1) + ')';
+                        }
+                      }
+                      path.unshift(selector);
+                      current = parent;
+                    }
+                    return path.join(' > ');
+                  };
+                  const inferType = () => {
+                    const tag = element.tagName;
+                    if (tag === 'SELECT') return 'select';
+                    if (tag === 'TEXTAREA') return 'textarea';
+                    const rawType = (element.getAttribute && element.getAttribute('type')) || '';
+                    const normalized = rawType.toLowerCase();
+                    const nameValue = (nameAttr || '').toLowerCase();
+                    const idValue = (element.id || '').toLowerCase();
+                    const placeholder = (element.getAttribute && element.getAttribute('placeholder') || '').toLowerCase();
+                    if (normalized === 'email' || nameValue.includes('email') || idValue.includes('email')) return 'email';
+                    if (normalized === 'password' || nameValue.includes('password') || idValue.includes('password')) return 'password';
+                    if (normalized === 'tel' || nameValue.includes('phone') || idValue.includes('phone')) return 'tel';
+                    if (normalized === 'number' || nameValue.includes('number') || nameValue.includes('amount')) return 'number';
+                    if (normalized === 'date' || nameValue.includes('date')) return 'date';
+                    if (normalized === 'checkbox') return 'checkbox';
+                    if (normalized === 'radio') return 'radio';
+                    if (normalized === 'file') return 'file';
+                    if (normalized === 'submit' || normalized === 'button') return normalized;
+                    if (placeholder.includes('email')) return 'email';
+                    if (placeholder.includes('phone') || placeholder.includes('tel')) return 'tel';
+                    return 'text';
+                  };
+                  const findLabel = () => {
+                    if (element.id) {
+                      const explicit = document.querySelector('label[for="' + element.id + '"]');
+                      if (explicit && explicit.textContent) {
+                        return explicit.textContent.trim();
+                      }
+                    }
+                    if (typeof element.closest === 'function') {
+                      const parentLabel = element.closest('label');
+                      if (parentLabel && parentLabel.textContent) {
+                        return parentLabel.textContent.trim();
+                      }
+                    }
+                    const previous = element.previousElementSibling;
+                    if (previous && previous.tagName === 'LABEL' && previous.textContent) {
+                      return previous.textContent.trim();
+                    }
+                    if (element.getAttribute && element.getAttribute('placeholder')) {
+                      return element.getAttribute('placeholder');
+                    }
+                    return nameAttr || undefined;
+                  };
+                  return {
+                    selector: buildSelector(),
+                    name: nameAttr,
+                    label: findLabel(),
+                    inferredType: inferType(),
+                  };
+                }`,
+                returnByValue: true,
+              });
+
+              const info = introspection.result?.value ?? {};
+              normalized.selector = normalized.selector || info.selector || undefined;
+              normalized.name = normalized.name || info.name || undefined;
+              normalized.label = normalized.label || info.label || undefined;
+              normalized.type = normalized.type || info.inferredType || undefined;
+            }
+          } catch (error: any) {
+            preflightWarnings.push(`Failed to introspect node ${identifier}: ${error?.message || error}`);
+          } finally {
+            if (objectId) {
+              await this.safeReleaseObject(objectId);
+            }
+          }
+        }
+      }
+
+      normalizedFields.push(normalized);
+    }
+
+    if (normalizedFields.length === 0) {
+      const durationEmpty = Date.now() - start;
+      return {
+        success: false,
+        status: 'failed',
+        filledFields: [],
+        outcomes: [],
+        warnings: preflightWarnings,
+        durationMs: durationEmpty,
+      };
+    }
+
+    const documentObjectId = await this.getDocumentObjectId();
+
+    const payload = {
+      formSelector: request.formSelector,
+      submit: request.submit,
+      fields: normalizedFields,
+    };
+
+    const evaluation = await this.sendCommand<any>('Runtime.callFunctionOn', {
+      objectId: documentObjectId,
+      functionDeclaration: `async function(payload) {
+        const root = payload.formSelector ? this.querySelector(payload.formSelector) : this;
+        const searchRoot = root || this;
+        const outcomes = [];
+        const filledFields = [];
+        const warnings = [];
+        const fields = Array.isArray(payload.fields) ? payload.fields : [];
+
+        if (payload.formSelector && !root) {
+          warnings.push('Form selector not found: ' + payload.formSelector);
+        }
+
+        const locateByLabel = (labelText) => {
+          if (!labelText) return null;
+          const labels = Array.from(this.querySelectorAll('label'));
+          for (const label of labels) {
+            if (!label.textContent) continue;
+            if (label.textContent.trim() === labelText) {
+              const controlId = label.getAttribute('for');
+              if (controlId) {
+                const control = this.getElementById ? this.getElementById(controlId) : null;
+                if (control) return control;
+              }
+              const nested = label.querySelector('input,select,textarea');
+              if (nested) return nested;
+            }
+          }
+          return null;
+        };
+
+        const attemptQuery = (rootNode, selector) => {
+          if (!selector || !rootNode || typeof rootNode.querySelector !== 'function') return null;
+          try {
+            return rootNode.querySelector(selector);
+          } catch (error) {
+            warnings.push('Invalid selector: ' + selector);
+            return null;
+          }
+        };
+
+        for (const field of fields) {
+          if (!field) continue;
+          const result = { target: field.identifier || 'unknown-field', status: 'failed', message: undefined, appliedValue: undefined };
+          let element = attemptQuery(searchRoot, field.selector);
+
+          if (!element && field.name) {
+            element = attemptQuery(searchRoot, '[name="' + field.name.replace(/"/g, '\\"') + '"]');
+          }
+
+          if (!element && field.label) {
+            element = locateByLabel(field.label);
+          }
+
+          if (!element && !payload.formSelector && field.selector) {
+            element = attemptQuery(this, field.selector);
+          }
+
+          if (!element) {
+            result.message = 'Field not found';
+            outcomes.push(result);
+            continue;
+          }
+
+          try {
+            const tag = element.tagName || '';
+            const rawType = (element.getAttribute && element.getAttribute('type')) || '';
+            const inferredType = (field.type || rawType || tag).toLowerCase();
+            let appliedValue = field.value;
+
+            if (inferredType === 'checkbox') {
+              element.checked = Boolean(field.value);
+              appliedValue = element.checked;
+            } else if (inferredType === 'radio') {
+              const groupName = element.getAttribute ? element.getAttribute('name') : null;
+              if (groupName) {
+                const radios = Array.from(this.querySelectorAll('[name="' + groupName + '"]'));
+                let matched = false;
+                for (const radio of radios) {
+                  if (!radio) continue;
+                  if ((radio as HTMLInputElement).value == field.value) {
+                    (radio as HTMLInputElement).checked = true;
+                    matched = true;
+                  } else {
+                    (radio as HTMLInputElement).checked = false;
+                  }
+                }
+                if (!matched) {
+                  (element as HTMLInputElement).checked = true;
+                }
+              } else {
+                (element as HTMLInputElement).checked = true;
+              }
+            } else if (inferredType === 'select') {
+              element.value = field.value as string;
+              if (element.value !== String(field.value ?? '')) {
+                const options = Array.from((element as HTMLSelectElement).options || []);
+                const match = options.find(opt => opt.text === field.value || opt.value === field.value);
+                if (match) {
+                  element.value = match.value;
+                  appliedValue = match.value;
+                }
+              }
+            } else if (inferredType === 'file') {
+              result.status = 'failed';
+              result.message = 'File inputs cannot be programmatically filled';
+              outcomes.push(result);
+              continue;
+            } else {
+              const textValue = field.value == null ? '' : String(field.value);
+              if ('value' in element) {
+                (element as HTMLInputElement).value = textValue;
+                appliedValue = (element as HTMLInputElement).value;
+              } else {
+                element.textContent = textValue;
+                appliedValue = textValue;
+              }
+            }
+
+            element.dispatchEvent(new Event('input', { bubbles: true }));
+            const trigger = field.trigger || 'change';
+            if (trigger !== 'input') {
+              element.dispatchEvent(new Event(trigger, { bubbles: true }));
+            }
+
+            if (field.commit === 'enter') {
+              ['keydown', 'keypress', 'keyup'].forEach(eventType => {
+                element.dispatchEvent(new KeyboardEvent(eventType, { key: 'Enter', code: 'Enter', bubbles: true }));
+              });
+            }
+
+            result.status = 'filled';
+            result.appliedValue = appliedValue;
+            filledFields.push(result.target);
+          } catch (error) {
+            result.status = 'failed';
+            result.message = error && error.message ? error.message : String(error);
+          }
+
+          outcomes.push(result);
+        }
+
+        if (payload.submit && payload.submit.mode && payload.submit.mode !== 'none') {
+          warnings.push('Submit modes are not yet implemented; skipping submit step');
+        }
+
+        return { filledFields, outcomes, warnings };
+      }`,
+      arguments: [{ value: payload }],
+      returnByValue: true,
+    });
+
+    await this.safeReleaseObject(documentObjectId);
+
+    const scriptResult = (evaluation.result?.value || {
+      filledFields: [],
+      outcomes: [],
+      warnings: [],
+    }) as FillFormScriptResult;
+
+    try {
+      await this.buildSnapshot();
+    } catch (error) {
+      console.warn('[DomService] Failed to rebuild snapshot after fill_form', error);
+      this.invalidateSnapshot();
+    }
+
+    const duration = Date.now() - start;
+    const aggregateStatus = this.deriveAggregateStatus(scriptResult.outcomes);
+    const success = aggregateStatus === 'ok';
+
+    const combinedWarnings = [...preflightWarnings, ...(scriptResult.warnings || [])];
+
+    this.trackActionMetrics('fill_form', duration, success, success ? undefined : 'fill_form_attention');
+
+    return {
+      success,
+      status: aggregateStatus,
+      filledFields: scriptResult.filledFields,
+      outcomes: scriptResult.outcomes,
+      warnings: combinedWarnings,
+      durationMs: duration,
+    };
+  }
+
+  private async getDocumentObjectId(): Promise<string> {
+    const evaluation = await this.sendCommand<any>('Runtime.evaluate', {
+      expression: 'document',
+      returnByValue: false,
+    });
+
+    const objectId = evaluation.result?.objectId;
+    if (!objectId) {
+      throw new Error('DOCUMENT_RESOLVE_FAILED: Unable to access document object');
+    }
+
+    return objectId;
+  }
+
+  private async safeReleaseObject(objectId: string): Promise<void> {
+    try {
+      await this.sendCommand('Runtime.releaseObject', { objectId });
+    } catch (error) {
+      console.warn('[DomService] Failed to release object', { objectId, error });
+    }
+  }
+
+  private deriveAggregateStatus(outcomes: FillFormFieldOutcome[]): FillFormAggregateStatus {
+    if (outcomes.length === 0) {
+      return 'failed';
+    }
+
+    const failures = outcomes.filter(outcome => outcome.status !== 'filled').length;
+
+    if (failures === 0) {
+      return 'ok';
+    }
+
+    if (failures === outcomes.length) {
+      return 'failed';
+    }
+
+    return 'attention_required';
+  }
+
   // T092: Performance metrics tracking helper
-  private trackActionMetrics(actionType: 'click' | 'type' | 'scroll' | 'keypress', duration: number, success: boolean, error?: string): void {
+  private trackActionMetrics(actionType: 'click' | 'type' | 'scroll' | 'keypress' | 'fill_form', duration: number, success: boolean, error?: string): void {
     if (!this.config.enableMetrics) return;
 
     this.metrics.actionCount++;
@@ -1016,7 +1442,8 @@ export class DomService {
         click: 0,
         type: 0,
         scroll: 0,
-        keypress: 0
+        keypress: 0,
+        fill_form: 0
       },
       totalActionDuration: 0,
       averageActionDuration: 0,
@@ -1042,6 +1469,7 @@ Actions: ${this.metrics.actionCount} (avg ${this.metrics.averageActionDuration.t
   - Type: ${this.metrics.actionsByType.type}
   - Scroll: ${this.metrics.actionsByType.scroll}
   - Keypress: ${this.metrics.actionsByType.keypress}
+  - Fill Form: ${this.metrics.actionsByType.fill_form}
 Errors: ${this.metrics.errorCount}
 Since: ${this.metrics.lastReset.toISOString()}
     `.trim();

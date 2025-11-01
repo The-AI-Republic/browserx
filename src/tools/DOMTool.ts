@@ -16,6 +16,8 @@ import type {
   TypeOptions,
   KeyPressOptions,
   ActionResult,
+  FillFormFieldInstruction,
+  FillFormResult,
 } from '../types/domTool';
 import { DomService } from './dom/DomService';
 
@@ -27,12 +29,19 @@ import { DomService } from './dom/DomService';
  * Unified DOM tool request (discriminated union by action type)
  */
 export interface DOMToolRequest {
-  action: 'snapshot' | 'click' | 'type' | 'keypress';
+  action: 'snapshot' | 'click' | 'type' | 'keypress' | 'fill_form';
   tab_id?: number;
   node_id?: number; // Numeric CDP nodeId
   text?: string;
   key?: string;
   options?: any;
+  form_selector?: string;
+  fields?: FillFormFieldInstruction[];
+  metadata?: Record<string, any>;
+  submit?: {
+    mode?: 'none' | 'click' | 'commit';
+    delay_ms?: number;
+  };
 }
 
 /**
@@ -40,7 +49,7 @@ export interface DOMToolRequest {
  */
 export interface DOMToolResponse {
   success: boolean;
-  data?: SerializedDom | ActionResult;
+  data?: SerializedDom | ActionResult | FillFormResult;
   error?: {
     code: string;
     message: string;
@@ -76,12 +85,12 @@ export enum DOMToolErrorCode {
 export class DOMTool extends BaseTool {
   protected toolDefinition: ToolDefinition = createToolDefinition(
     'browser_dom',
-    'Unified DOM inspection and action tool. Capture page DOM snapshots with token-optimized serialization, and execute actions (click, type, keypress) on elements using persistent node IDs. Combines DOM capture with page interaction in a single tool.',
+    'Unified DOM inspection and action tool. Capture page DOM snapshots with token-optimized serialization, execute interactions (click, type, keypress), and fill complex forms in a single batched action using persistent node IDs.',
     {
       action: {
         type: 'string',
-        description: 'Action type: snapshot (capture DOM), click (click element), type (input text), keypress (keyboard input)',
-        enum: ['snapshot', 'click', 'type', 'keypress'],
+        description: 'Action type: snapshot (capture DOM), click (click element), type (input text), keypress (keyboard input), fill_form (batch form fill)',
+        enum: ['snapshot', 'click', 'type', 'keypress', 'fill_form'],
       },
       tab_id: {
         type: 'number',
@@ -103,6 +112,45 @@ export class DOMTool extends BaseTool {
         type: 'object',
         description: 'Action-specific options. For type action: { clearFirst?: boolean, speed?: number, commit?: "change"|"enter", blur?: boolean }. commit controls input finalization: "change" (default, fires change event) or "enter" (appends Enter keystroke). For click: { button?: "left"|"right"|"middle", scrollIntoView?: boolean }. For keypress: { modifiers?: { ctrl?: boolean, shift?: boolean, alt?: boolean, meta?: boolean } }. For snapshot: { includeValues?: boolean, metadata?: { includeAriaLabel?: boolean, includeText?: boolean, includeValue?: boolean, includeInputType?: boolean, includeHint?: boolean, includeBbox?: boolean, includeStates?: boolean, includeHref?: boolean } }.',
       },
+      form_selector: {
+        type: 'string',
+        description: 'Optional CSS selector to scope fill_form lookups to a specific form element.',
+      },
+      fields: {
+        type: 'array',
+        description: 'Structured instructions for fill_form action. Each entry must include a value and at least one identifier (node_id, selector, or name).',
+        items: {
+          type: 'object',
+          properties: {
+            node_id: { type: 'number', description: 'Snapshot node identifier for the field.' },
+            selector: { type: 'string', description: 'CSS selector fallback when node_id is unavailable.' },
+            name: { type: 'string', description: 'Name attribute fallback.' },
+            label: { type: 'string', description: 'Human-readable label for logging and responses.' },
+            type: {
+              type: 'string',
+              enum: ['text', 'email', 'password', 'tel', 'number', 'date', 'checkbox', 'radio', 'select', 'textarea'],
+              description: 'Optional hint for input handling.',
+            },
+            value: { description: 'Value to apply to the field; must be JSON-serializable.' },
+            trigger: { type: 'string', enum: ['input', 'change', 'blur'], description: 'Event to dispatch after applying the value.' },
+            commit: { type: 'string', enum: ['none', 'enter'], description: 'Whether to append an Enter keystroke after filling.' },
+          },
+          required: ['value'],
+        },
+      },
+      metadata: {
+        type: 'object',
+        description: 'Free-form metadata echoed back in the fill_form response.',
+        additionalProperties: true,
+      },
+      submit: {
+        type: 'object',
+        description: 'Optional instructions for post-fill submission behaviour.',
+        properties: {
+          mode: { type: 'string', enum: ['none', 'click', 'commit'] },
+          delay_ms: { type: 'number', description: 'Optional delay before triggering submission.' },
+        },
+      },
     },
     {
       required: ['action'],
@@ -115,6 +163,7 @@ export class DOMTool extends BaseTool {
           'page_click',
           'page_input',
           'page_keypress',
+          'form_fill',
           'change_detection',
           'iframe_support',
           'shadow_dom_support',
@@ -155,7 +204,7 @@ export class DOMTool extends BaseTool {
   protected async executeImpl(
     request: BaseToolRequest,
     options?: BaseToolOptions
-  ): Promise<SerializedDom | ActionResult> {
+  ): Promise<SerializedDom | ActionResult | FillFormResult> {
     // Validate Chrome context
     this.validateChromeContext();
 
@@ -187,6 +236,8 @@ export class DOMTool extends BaseTool {
         return await this.executeType(tabId, typedRequest.node_id!, typedRequest.text!, typedRequest.options);
       case 'keypress':
         return await this.executeKeypress(tabId, typedRequest.key!, typedRequest.options);
+      case 'fill_form':
+        return await this.executeFillForm(tabId, typedRequest);
       default:
         throw new Error(`Unknown action: ${typedRequest.action}`);
     }
@@ -262,6 +313,28 @@ export class DOMTool extends BaseTool {
     return await domService.keypress(key, modifiers);
   }
 
+  /**
+   * Execute fill_form action
+   */
+  private async executeFillForm(
+    tabId: number,
+    request: DOMToolRequest
+  ): Promise<FillFormResult> {
+    this.log('debug', 'Executing fill_form', {
+      tabId,
+      fieldCount: request.fields?.length ?? 0,
+      scoped: Boolean(request.form_selector),
+    });
+
+    const domService = await DomService.forTab(tabId);
+    return await domService.fillForm({
+      fields: request.fields ?? [],
+      formSelector: request.form_selector,
+      submit: request.submit,
+      metadata: request.metadata,
+    });
+  }
+
   // ============================================================================
   // v3.0 Request Validation & Error Handling
   // ============================================================================
@@ -277,8 +350,8 @@ export class DOMTool extends BaseTool {
     const req = request as any;
 
     // Validate action
-    if (!['snapshot', 'click', 'type', 'keypress'].includes(req.action)) {
-      return `Invalid action: ${req.action}. Must be one of: snapshot, click, type, keypress`;
+    if (!['snapshot', 'click', 'type', 'keypress', 'fill_form'].includes(req.action)) {
+      return `Invalid action: ${req.action}. Must be one of: snapshot, click, type, keypress, fill_form`;
     }
 
     // Validate tab_id if provided
@@ -316,6 +389,66 @@ export class DOMTool extends BaseTool {
         if (!req.key || typeof req.key !== 'string') {
           return 'key is required for keypress action';
         }
+        return null;
+
+      case 'fill_form':
+        if (!Array.isArray(req.fields) || req.fields.length === 0) {
+          return 'fields is required for fill_form action and must contain at least one entry';
+        }
+
+        for (const [index, field] of req.fields.entries()) {
+          if (field == null || typeof field !== 'object') {
+            return `fields[${index}] must be an object`;
+          }
+
+          if (!('value' in field)) {
+            return `fields[${index}] is missing value property`;
+          }
+
+          const hasIdentifier =
+            typeof field.node_id === 'number' ||
+            typeof field.selector === 'string' ||
+            typeof field.name === 'string';
+
+          if (!hasIdentifier) {
+            return `fields[${index}] must include node_id, selector, or name`;
+          }
+
+          if (
+            field.trigger !== undefined &&
+            !['input', 'change', 'blur'].includes(field.trigger)
+          ) {
+            return `fields[${index}].trigger must be one of: input, change, blur`;
+          }
+
+          if (
+            field.commit !== undefined &&
+            !['none', 'enter'].includes(field.commit)
+          ) {
+            return `fields[${index}].commit must be one of: none, enter`;
+          }
+        }
+
+        if (req.submit) {
+          if (typeof req.submit !== 'object') {
+            return 'submit must be an object when provided';
+          }
+
+          if (
+            req.submit.mode !== undefined &&
+            !['none', 'click', 'commit'].includes(req.submit.mode)
+          ) {
+            return 'submit.mode must be one of: none, click, commit';
+          }
+
+          if (
+            req.submit.delay_ms !== undefined &&
+            (typeof req.submit.delay_ms !== 'number' || req.submit.delay_ms < 0)
+          ) {
+            return 'submit.delay_ms must be a non-negative number';
+          }
+        }
+
         return null;
 
       default:
